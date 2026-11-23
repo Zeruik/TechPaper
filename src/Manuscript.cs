@@ -46,6 +46,9 @@ internal static class Editor {
             if (from == "It is worth noting that ") {
                 if (s.StartsWith(from, StringComparison.Ordinal) && s.Length > from.Length)
                     s = Char.ToUpperInvariant(s[from.Length]) + s.Substring(from.Length + 1);
+            } else if (to.Length==0) {
+                // Remove complete sentence openings; preserve phrases embedded in a claim.
+                s=Regex.Replace(s,@"(^|[。！？]\s*)"+Regex.Escape(from),"$1");
             } else if (from[0] < 128)
                 s = Regex.Replace(s, @"\b" + Regex.Escape(from), to);
             else s = s.Replace(from,to);

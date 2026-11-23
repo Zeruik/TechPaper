@@ -49,6 +49,21 @@ class Regression {
             Check(a.All(k=>plain[k.Key].SequenceEqual(k.Value)),"no-edit part fidelity");
             Check(original.SequenceEqual(File.ReadAllBytes(source)),"source intact");
             var json=new JavaScriptSerializer().Deserialize<Dictionary<string,object>>("{\"documents\":[{\"predicted_class\":\"mixed\",\"class_probabilities\":{\"ai\":0.1,\"mixed\":0.8,\"human\":0.1}}],\"version\":\"fixture\"}");
+            foreach(var pair in new[] {
+                new[]{"值得注意的是，采样周期为 5 s。","采样周期为 5 s。"},
+                new[]{"先校零。需要指出的是，误差可能增大。","先校零。误差可能增大。"},
+                new[]{"在研究的过程中，我们记录了 12 个读数。","在研究中，我们记录了 12 个读数。"},
+                new[]{"我们对两个序列进行了比较。","我们比较了两个序列。"},
+                new[]{"It is worth noting that the peak may shift.","The peak may shift."},
+                new[]{"We repeated the test in order to estimate drift.","We repeated the test to estimate drift."},
+                new[]{"更值得注意的是，误差可能与方向有关。","更值得注意的是，误差可能与方向有关。"},
+                new[]{"我们认为需要指出的是，样本量有限。","我们认为需要指出的是，样本量有限。"},
+                new[]{"The instrument cannot resolve peaks below 5 Hz.","The instrument cannot resolve peaks below 5 Hz."},
+                new[]{"这里只讨论 1 s、5 s 和 10 s 的采样结果[1]。","这里只讨论 1 s、5 s 和 10 s 的采样结果[1]。"}}) {
+                var result=Editor.Revise(pair[0]);
+                Check(result==pair[1],"modern editorial fixture");
+                Services.ValidateRevision(pair[0],result);
+            }
             foreach(var example in new[] {
                 new[]{"采样间隔为 5 s。","采样间隔为 5 h。"},
                 new[]{"剂量为 1 g。","剂量为 1 mg。"},

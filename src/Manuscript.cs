@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
@@ -174,7 +174,7 @@ internal sealed class Manuscript {
         rows.Add("批注部件："+parts.Keys.Count(k=>k.StartsWith("word/comments") && k.EndsWith(".xml"))+"。默认完整保留批注和修订。");
         return String.Join("\r\n",rows);
     }
-    internal void Export(string target,HashSet<int> selected,bool clean,bool comments=false) {
+    internal int Export(string target,HashSet<int> selected,bool clean,bool comments=false) {
         target=Path.GetFullPath(target);
         if(File.Exists(target) || String.Equals(target,Source,StringComparison.OrdinalIgnoreCase))
             throw new IOException("请选择新的文件名，原稿和已有文件会保留。");
@@ -198,7 +198,7 @@ internal sealed class Manuscript {
                 XDocument x=name=="word/document.xml" && edits.Count>0 ? clone : null;
                 bool changed=x!=null;
                 if(clean && (name.EndsWith(".xml",StringComparison.OrdinalIgnoreCase) || name.EndsWith(".rels"))) {
-                    if(x==null)x=Parse(entry.Value);
+                    if(x==null)x=name=="word/document.xml"?clone:Parse(entry.Value);
                     IEnumerable<XElement> remove=Enumerable.Empty<XElement>();
                     if(name=="docProps/core.xml") remove=x.Root.Elements();
                     else if(name=="docProps/app.xml") remove=x.Root.Elements().Where(n=>new[]{"Company","Manager","Template","HyperlinkBase","TotalTime","TitlesOfParts","HeadingPairs"}.Contains(n.Name.LocalName));
@@ -214,7 +214,16 @@ internal sealed class Manuscript {
                 byte[] data=changed?Pack(x):entry.Value;
                 using(var stream=output.Open()) stream.Write(data,0,data.Length);
             }
+            using(var check=ZipFile.OpenRead(tmp)) {
+                var entry=check.GetEntry("word/document.xml");
+                using(var stream=entry.Open()) {
+                    var reopened=XDocument.Load(stream,LoadOptions.PreserveWhitespace);
+                    if (!XNode.DeepEquals(reopened.Root,clone.Root))
+                        throw new InvalidDataException("复核副本时发现正文、格式或引用结构与预期不一致。");
+                }
+            }
             File.Move(tmp,target);
+            return edits.Count;
         } finally {if(File.Exists(tmp))File.Delete(tmp);}
     }
 }

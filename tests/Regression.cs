@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
@@ -49,6 +49,17 @@ class Regression {
             Check(a.All(k=>plain[k.Key].SequenceEqual(k.Value)),"no-edit part fidelity");
             Check(original.SequenceEqual(File.ReadAllBytes(source)),"source intact");
             var json=new JavaScriptSerializer().Deserialize<Dictionary<string,object>>("{\"documents\":[{\"predicted_class\":\"mixed\",\"class_probabilities\":{\"ai\":0.1,\"mixed\":0.8,\"human\":0.1}}],\"version\":\"fixture\"}");
+            foreach(var example in new[] {
+                new[]{"采样间隔为 5 s。","采样间隔为 5 h。"},
+                new[]{"剂量为 1 g。","剂量为 1 mg。"},
+                new[]{"峰值可能变化。","峰值变化。"},
+                new[]{"模型不能确定真实频率。","模型能确定真实频率。"},
+                new[]{"观察值见[1]。","观察值见1。"}}) {
+                bool rejected=false;
+                try {Services.ValidateRevision(example[0],example[1]);} catch(InvalidDataException){rejected=true;}
+                Check(rejected,"protected scientific detail: "+example[0]);
+            }
+            Services.ValidateRevision("我们对 5 s 序列的峰值进行了比较[1]。","我们比较了 5 s 序列的峰值[1]。");
             bool bad=false;try{Services.ValidateRevision("偏移为 -2 mm","偏移为 2 cm");}catch(InvalidDataException){bad=true;}Check(bad,"signed numbers and unit protection");
             Check(Services.ReadScore(json).Contains("fixture"),"GPTZero response fixture");
         }finally{if(File.Exists(path))File.Delete(path);}

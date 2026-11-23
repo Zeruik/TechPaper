@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Drawing;
 using System.IO;
 using System.Linq;
@@ -84,7 +84,7 @@ internal sealed partial class Workspace : Form {
         bool removeReview=false;
         try{if(scrub && !ConfirmPrivacy(out removeReview))return;}
         catch(Exception ex){MessageBox.Show(this,"无法读取隐私清单："+ex.Message,Text);return;}
-        Run(async delegate{await Task.Run(()=>doc.Export(path,selected,scrub,removeReview));status.Text="已导出 · "+path;});}}
+        Run(async delegate{int changes=await Task.Run(()=>doc.Export(path,selected,scrub,removeReview));status.Text="已重开核对正文结构 · 改动 "+changes+" 段 · "+path;});}}
     string Ask(string title,string hint,string preset,bool secret,string preview=null){
         using(var dlg=new Form{Text=title,Width=630,Height=preview==null?215:450,StartPosition=FormStartPosition.CenterParent,Font=Font,MinimizeBox=false,MaximizeBox=false}){
             var panel=new TableLayoutPanel{Dock=DockStyle.Fill,Padding=new Padding(12),RowCount=preview==null?3:4,ColumnCount=1};

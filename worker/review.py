@@ -45,7 +45,33 @@ def rels(z, part):
             for n in ET.fromstring(z.read(path)) if n.get("TargetMode")!="External"}
 
 
-def ocr(image, location):
+def column_order(rows, width):
+    """Read two sustained columns between spanning headings in portrait posters."""
+    result=[]
+    pending=[]
+    def flush():
+        left=[row for row in pending if max(x for x,y in row[0]) < width*.48]
+        right=[row for row in pending if min(x for x,y in row[0]) > width*.52]
+        if min(len(left),len(right)) >= 3:
+            top=lambda row:min(y for x,y in row[0])
+            if max(min(map(top,left)),min(map(top,right))) < min(max(map(top,left)),max(map(top,right))):
+                result.extend(sorted(left,key=top)+sorted(right,key=top))
+                pending.clear()
+                return
+        result.extend(pending)
+        pending.clear()
+    for row in rows:
+        xs=[x for x,y in row[0]]
+        if max(xs)<width*.48 or min(xs)>width*.52:
+            pending.append(row)
+        else:
+            flush()
+            result.append(row)
+    flush()
+    return result
+
+
+def ocr(image, location, offset=(0,0), columns=False):
     global ocr_engine
     import numpy as np
     import onnxruntime
@@ -57,8 +83,8 @@ def ocr(image, location):
     if not results:
         yield location,"","OCR 未识别文字",None
     else:
-        for i,(box,text,prob) in enumerate(results,1):
-            coords=" ".join("%d,%d"%(x,y) for x,y in box)
+        for i,(box,text,prob) in enumerate(column_order(results,image.width) if columns else results,1):
+            coords=" ".join("%d,%d"%(x+offset[0],y+offset[1]) for x,y in box)
             yield f"{location} / 行 {i} / px {coords}",text,"OCR；阅读顺序待核",float(prob)
 
 
@@ -122,7 +148,7 @@ def extract(path):
         yield from office(path)
     elif ext in (".png",".jpg",".jpeg"):
         with Image.open(path) as picture:
-            yield from ocr(ImageOps.exif_transpose(picture),"图 1")
+            yield from ocr(ImageOps.exif_transpose(picture),"图 1",columns=True)
     elif ext==".pdf":
         import pypdfium2 as pdf
         with pdf.PdfDocument(path) as document:
@@ -146,8 +172,31 @@ def extract(path):
                                     data.append(ch)
                                     try:bounds.append(text.get_charbox(j))
                                     except Exception:pass
-                            if any(True for _ in page.get_objects(filter=[pdf.raw.FPDF_PAGEOBJ_IMAGE])):
-                                yield f"第 {i+1} 页","","此页有文字层，内嵌图像内容未另做 OCR",None
+                            images=list(page.get_objects(filter=[pdf.raw.FPDF_PAGEOBJ_IMAGE],max_depth=0))
+                            if images:
+                                bitmap=page.render(scale=2)
+                                try:
+                                    view=bitmap.to_pil()
+                                    conv=bitmap.get_posconv(page)
+                                    seen=set()
+                                    for idx,obj in enumerate(images,1):
+                                        loc=f"第 {i+1} 页 / 图 {idx} / 144 dpi"
+                                        x0,y0,x1,y1=obj.get_bounds()
+                                        corners=[conv.to_bitmap(x,y) for x in (x0,x1) for y in (y0,y1)]
+                                        xs,ys=zip(*corners)
+                                        box=(max(0,min(xs)),max(0,min(ys)),min(view.width,max(xs)),min(view.height,max(ys)))
+                                        if box in seen or box[2]<=box[0] or box[3]<=box[1]:continue
+                                        seen.add(box)
+                                        for where,value,note,conf in ocr(view.crop(box),loc,box[:2],columns=True):
+                                            # Suppress an OCR overlay only when the same text is selectable at this location.
+                                            pts=re.findall(r"(-?\d+),(-?\d+)",where.split(" / px ")[-1])
+                                            if pts and value:
+                                                pagepts=[conv.to_page(int(x),int(y)) for x,y in pts]
+                                                px,py=zip(*pagepts)
+                                                selectable=text.get_text_bounded(min(px)-2,min(py)-2,max(px)+2,max(py)+2)
+                                                if "".join(value.split()) in "".join(selectable.split()):continue
+                                            yield where,value,note,conf
+                                finally:bitmap.close()
                         else:
                             bitmap=page.render(scale=2)
                             try:yield from ocr(bitmap.to_pil(),f"第 {i+1} 页 / 144 dpi")

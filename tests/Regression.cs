@@ -65,6 +65,11 @@ class Regression {
                 Services.ValidateRevision(pair[0],result);
             }
             foreach(var example in new[] {
+                new[]{"实验组为 22，对照组为 25[1]。","对照组为 22，实验组为 25[1]。"},
+                new[]{"Group A was lower than group B [1].","Group B was lower than group A [1]."},
+                new[]{"甲组高于乙组[1]。","甲组低于乙组[1]。"},
+                new[]{"差异未达到显著水平。","差异达到显著水平。"},
+                new[]{"结果提示存在差异[1]。","结果证实存在差异[1]。"},
                 new[]{"采样间隔为 5 s。","采样间隔为 5 h。"},
                 new[]{"剂量为 1 g。","剂量为 1 mg。"},
                 new[]{"峰值可能变化。","峰值变化。"},

@@ -20,7 +20,7 @@ class DesktopChecks {
             string src=Path.Combine(folder,"中文 样件.docx");File.Copy("tests/sample.docx",src);
             var data=new DataObject(DataFormats.FileDrop,new[]{src});
             typeof(Control).GetMethod("OnDragDrop",BindingFlags.Instance|BindingFlags.NonPublic).Invoke(f,new object[]{new DragEventArgs(data,0,0,0,DragDropEffects.Copy,DragDropEffects.Copy)});
-            var rows=Walk(f).OfType<ListView>().Single();Pump(()=>rows.Items.Count>2);Check(rows.CheckedItems.Count==3,"drop routes to review");
+            var rows=Walk(f).OfType<ListView>().Single();Pump(()=>rows.Items.Count>2);Check(rows.CheckedItems.Count==0,"drop requires author selection");
             rows.Items[2].Selected=true;rows.Items[2].Focused=true;Application.DoEvents();
             Check(Walk(f).OfType<Button>().Where(x=>x.Enabled).All(x=>x.TabStop),"keyboard focusable actions");
             if(args.Contains("--screenshot")){

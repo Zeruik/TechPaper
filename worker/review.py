@@ -52,7 +52,7 @@ def column_order(rows, width):
     def flush():
         left=[row for row in pending if max(x for x,y in row[0]) < width*.48]
         right=[row for row in pending if min(x for x,y in row[0]) > width*.52]
-        if min(len(left),len(right)) >= 3:
+        if min(len(left),len(right)) >= 2:
             top=lambda row:min(y for x,y in row[0])
             if max(min(map(top,left)),min(map(top,right))) < min(max(map(top,left)),max(map(top,right))):
                 result.extend(sorted(left,key=top)+sorted(right,key=top))
@@ -84,6 +84,7 @@ def ocr(image, location, offset=(0,0), columns=False):
         yield location,"","OCR 未识别文字",None
     else:
         for i,(box,text,prob) in enumerate(column_order(results,image.width) if columns else results,1):
+            text=re.sub(r"(?<=[A-Za-z0-9])\s*丨\s*(?=[A-Za-z])"," | ",text)
             coords=" ".join("%d,%d"%(x+offset[0],y+offset[1]) for x,y in box)
             yield f"{location} / 行 {i} / px {coords}",text,"OCR；阅读顺序待核",float(prob)
 
@@ -141,6 +142,48 @@ def embedded(z,node,part,loc):
             yield where,"","图像跳过："+type(ex).__name__,None
 
 
+def native_lines(text, pdf, page_width):
+    """Separate adjacent columns before sorting by column. PDF coordinates start at bottom left."""
+    lines, chars, boxes = [], [], []
+    def flush():
+        if boxes and "".join(chars).strip():
+            x0=min(b[0] for b in boxes)
+            y0=min(b[1] for b in boxes)
+            x1=max(b[2] for b in boxes)
+            y1=max(b[3] for b in boxes)
+            lines.append(([(x0,-y1),(x1,-y0)],"".join(chars).strip().replace("\xa0"," "),(x0,y0,x1,y1)))
+        chars.clear()
+        boxes.clear()
+    for j in range(text.count_chars()):
+        ch=chr(pdf.raw.FPDFText_GetUnicode(text,j))
+        if ch in "\r\n":
+            flush()
+            continue
+        if ch.isspace():
+            chars.append(" ")
+            continue
+        b=text.get_charbox(j)
+        if boxes and b[0]-boxes[-1][2]>max(18,2*(b[3]-b[1])):
+            flush()
+        chars.append(ch)
+        boxes.append(b)
+    flush()
+    return column_order(lines,page_width)
+
+
+def hidden_text_object(obj, raw):
+    import ctypes
+    mode=raw.FPDFTextObj_GetTextRenderMode(obj)
+    if mode in (raw.FPDF_TEXTRENDERMODE_INVISIBLE,raw.FPDF_TEXTRENDERMODE_CLIP):
+        return True
+    def transparent(get_color):
+        channels=[ctypes.c_uint() for _ in range(4)]
+        return get_color(obj,*(ctypes.byref(c) for c in channels)) and channels[-1].value==0
+    fill=mode in (0,2,4,6)
+    stroke=mode in (1,2,5,6)
+    return (fill or stroke) and (not fill or transparent(raw.FPDFPageObj_GetFillColor)) and (not stroke or transparent(raw.FPDFPageObj_GetStrokeColor))
+
+
 def extract(path):
     from PIL import Image,ImageOps
     ext=path.suffix.lower()
@@ -157,21 +200,14 @@ def extract(path):
                 try:
                     text=page.get_textpage()
                     try:
-                        if text.get_text_bounded().strip():
-                            # PDFium indices identify each physical occurrence, including repeated lines.
-                            data=[];bounds=[];line=0
-                            for j in range(text.count_chars()+1):
-                                ch=chr(pdf.raw.FPDFText_GetUnicode(text,j)) if j<text.count_chars() else "\n"
-                                if ch in "\r\n":
-                                    if data:
-                                        line+=1
-                                        box="" if not bounds else " / pt %.1f,%.1f,%.1f,%.1f"%(min(b[0] for b in bounds),min(b[1] for b in bounds),max(b[2] for b in bounds),max(b[3] for b in bounds))
-                                        yield f"第 {i+1} 页 / 行 {line}{box}","".join(data),"PDF 文字层；坐标原点左下，读序待核",None
-                                        data=[];bounds=[]
-                                else:
-                                    data.append(ch)
-                                    try:bounds.append(text.get_charbox(j))
-                                    except Exception:pass
+                        hidden=any(hidden_text_object(obj,pdf.raw) for obj in page.get_objects(filter=[pdf.raw.FPDF_PAGEOBJ_TEXT]))
+                        if hidden:
+                            # Render once so overlapping invisible OCR and visible content cannot both enter the report.
+                            yield f"第 {i+1} 页","","检测到不可见文字层；本页按可见渲染识别，隐藏数值不参与分类",None
+                        if not hidden and text.get_text_bounded().strip():
+                            for line,(_,value,bounds) in enumerate(native_lines(text,pdf,page.get_width()),1):
+                                box=" / pt %.1f,%.1f,%.1f,%.1f"%bounds
+                                yield f"第 {i+1} 页 / 行 {line}{box}",value,"PDF 文字层；坐标原点左下，读序待核",None
                             images=list(page.get_objects(filter=[pdf.raw.FPDF_PAGEOBJ_IMAGE],max_depth=0))
                             if images:
                                 bitmap=page.render(scale=2)
@@ -199,7 +235,7 @@ def extract(path):
                                 finally:bitmap.close()
                         else:
                             bitmap=page.render(scale=2)
-                            try:yield from ocr(bitmap.to_pil(),f"第 {i+1} 页 / 144 dpi")
+                            try:yield from ocr(bitmap.to_pil(),f"第 {i+1} 页 / 144 dpi",columns=True)
                             finally:bitmap.close()
                     finally:text.close()
                 except Exception as ex:

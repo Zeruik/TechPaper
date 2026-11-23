@@ -36,12 +36,15 @@ internal static class Services {
         string measurement = number + @"(?:\s*(?:" + unit + @"))?";
         const string citation = @"[\[［【]\s*\d+(?:\s*[,，、;；\-–—]\s*\d+)*\s*[\]］】]";
         const string qualifier = @"不能|无法|尚未|并未|未能|未见|没有|并非|不显著|不确定|可能|仅限|\b(?i:not|no|never|cannot|may|might|only)\b";
+        const string group = @"(?:实验|对照|处理|干预|基线|安慰剂|空白|观察|治疗)组|(?:组\s*[A-Z甲乙丙丁]|[A-Z甲乙丙丁]\s*组)|\b(?i:(?:group|arm)\s+[a-z0-9]+|control|treatment|placebo|intervention)\b";
+        const string direction = @"高于|低于|小于|大于|超过|优于|劣于|上升|下降|增加|减少|升高|降低|正相关|负相关|提示|证明|证实|必然|显著|未|不|无|[<>≤≥]|\b(?i:higher|lower|greater|less|more|increase[d]?|decrease[d]?|suggests?|proves?|confirms?|significant(?:ly)?|must)\b";
+        string anchors = "(?:"+citation+"|"+measurement+"|"+qualifier+"|"+group+"|"+direction+")";
         if (String.IsNullOrWhiteSpace(updated) || updated.Contains("\n") || updated.Contains("\r") ||
             updated.Length > text.Length * 2 + 24 ||
             !ProtectedTokens(text,measurement).SequenceEqual(ProtectedTokens(updated,measurement)) ||
             !ProtectedTokens(text,citation).SequenceEqual(ProtectedTokens(updated,citation)) ||
-            !ProtectedTokens(text,qualifier).SequenceEqual(ProtectedTokens(updated,qualifier)))
-            throw new InvalidDataException("修订触及数值、单位、引文标记或结论限定词，或改变了段落结构。请逐段核对。");
+            !ProtectedTokens(text,anchors).SequenceEqual(ProtectedTokens(updated,anchors)))
+            throw new InvalidDataException("修订触及数值、单位、引文、组别、比较方向或结论限定词，或改变了段落结构。请逐段核对。");
     }
     static IEnumerable<string> ProtectedTokens(string text,string pattern) {
         return Regex.Matches(text,pattern,RegexOptions.CultureInvariant).Cast<Match>()

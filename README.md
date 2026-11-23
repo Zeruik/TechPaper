@@ -2,17 +2,17 @@
 
 <img src="assets/logo.png" alt="TechPaper 稿纸与放大镜图标" width="64">
 
-**Windows 离线论文审阅工作台 · 0.9.0-preview.3**
+**Windows 离线论文审阅工作台 · 0.9.0-preview.4**
 
 拖入论文、幻灯片或扫描图，导出带原文高亮和出处的 HTML。DOCX 还可逐段对照修订，保留原稿并另存新文件。界面提供简体中文、亮色、暗色和跟随系统外观。
 
-[下载预览版](https://github.com/Zeruik/TechPaper/releases/tag/v0.9.0-preview.3) · [验证记录](docs/VALIDATION.md) · [研究与方法](docs/RESEARCH.md) · [使用条款](docs/TERMS.txt) · [MIT 许可](LICENSE)
+[下载预览版](https://github.com/Zeruik/TechPaper/releases/tag/v0.9.0-preview.4) · [验证记录](docs/VALIDATION.md) · [研究与方法](docs/RESEARCH.md) · [使用条款](docs/TERMS.txt) · [MIT 许可](LICENSE)
 
 ![用合成材料演示逐段对照](assets/workspace.png)
 
 ## 安装和使用
 
-1. 在 Windows 10/11 x64 运行 TechPaper-Setup-0.9.0-preview.3.exe。阅读并同意条款，选择目录，按需勾选桌面快捷方式。安装范围为当前用户。安装器未作商业代码签名。可用 Get-FileHash 对照发行页 SHA256SUMS.txt。
+1. 在 Windows 10/11 x64 运行 TechPaper-Setup-0.9.0-preview.4.exe。阅读并同意条款，选择目录，按需勾选桌面快捷方式。安装范围为当前用户。安装器未作商业代码签名。可用 Get-FileHash 对照发行页 SHA256SUMS.txt。
 2. 选“打开文件”或拖入单个 DOCX、PPTX、PDF、PNG、JPG。Canva 导出的 PNG/JPG 可直接导入。安装目录 tests/sample.docx 是含表格、图片、修订、编号及引用角标的合成样件。
 3. 选“导出高亮报告”，指定新的 HTML 路径。提取及 OCR 在本机执行，运行时可取消。报告可在断网浏览器中打开。Ctrl+O 打开文件，Ctrl+R 导出报告，Esc 取消正在生成的报告。
 4. 对 DOCX 选择段落，查看原文和修订预览。规则精简建议默认勾选；本机模型建议需逐项勾选。点击“导出 DOCX 副本”，指定新文件名。原稿及已有文件受覆盖保护。
@@ -51,3 +51,9 @@ Word 编辑仅支持常规 Transitional DOCX。系统在原 OOXML 包中定点�
 仅构建桌面编辑器可运行 build.ps1 -AppOnly -Test。报告需要运行 build-worker.ps1。build/dist/review-worker 是完整离线辅助进程目录。release 内生成安装器和 SHA-256 清单。安装目录 third-party 包含依赖和 OCR 权重的许可。主程序、图标与项目文档采用 MIT；第三方组件、公版原文和研究数据分别遵循各自条款。翻译研究语料不随源代码和安装包分发。
 
 已构建离线辅助程序后，可用 .\build.ps1 -AppOnly -Test -DesktopTest 重跑桌面导入、取消与报告流程。
+
+### preview.4 的使用与验证
+
+DOCX 建议逐段并列显示原文和修订范围，勾选后才写入新的副本。可见展板按标题、左栏、右栏读取；含隐藏 OCR 文本的 PDF 以渲染结果为准。人工原作、译稿和生成稿的统计见验证记录。分类为实验性，Microsoft Word 桌面交互未测。安装包的实际离线测试见本版发行说明。
+
+本版实测通过六种等价展板输入、冲突值取可见正文、两处重复定位、12000 段完整性和 DOCX 引用结构复核。检测能力未达标：中英文小样本均全部弃答。Microsoft Word 桌面实测和 Library 原始 ZIP 未测。[详细通过、失败与未测记录](docs/VALIDATION.md#090-preview4-验收范围)

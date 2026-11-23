@@ -16,7 +16,7 @@ internal sealed partial class Workspace : Form {
     readonly Color teal=Color.FromArgb(8,81,80), ink=Color.FromArgb(33,52,53);
     Label file,summary,status;
     ListView rows;
-    TextBox before,after;
+    RichTextBox before,after;
     CheckBox clean;
     Button save,cloud,model,open;
     bool stopBatch;
@@ -45,7 +45,7 @@ internal sealed partial class Workspace : Form {
         for(int i=0;i<2;i++)compare.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,50));
         compare.RowStyles.Add(new RowStyle(SizeType.Absolute,28));compare.RowStyles.Add(new RowStyle(SizeType.Percent,100));
         compare.Controls.Add(LabelAt("原文",10),0,0);compare.Controls.Add(LabelAt("修订预览",10),1,0);
-        before=Box();after=Box();compare.Controls.Add(before,0,1);compare.Controls.Add(after,1,1);layout.Controls.Add(compare,0,3);
+        before=CompareBox();after=CompareBox();compare.Controls.Add(before,0,1);compare.Controls.Add(after,1,1);layout.Controls.Add(compare,0,3);
         var actions=new FlowLayoutPanel{Dock=DockStyle.Fill,WrapContents=false,Padding=new Padding(0,8,0,0)};
         save=ButtonAt("导出 DOCX 副本",Export);save.BackColor=teal;save.ForeColor=Color.White;
         clean=new CheckBox{Text="清理文档元数据",Checked=false,AutoSize=true,Margin=new Padding(8,10,12,0)};
@@ -55,6 +55,7 @@ internal sealed partial class Workspace : Form {
         SetupTools();EnableActions();FormClosing+=(s,e)=>{if(busy)e.Cancel=true;};
     }
     Label LabelAt(string title,int size){return new Label{Text=title,Font=new Font(Font.FontFamily,size),AutoEllipsis=true,Dock=DockStyle.Fill,TextAlign=ContentAlignment.MiddleLeft};}
+    RichTextBox CompareBox(){return new RichTextBox{ReadOnly=true,DetectUrls=false,Dock=DockStyle.Fill,BorderStyle=BorderStyle.FixedSingle};}
     TextBox Box(){return new TextBox{ReadOnly=true,Multiline=true,ScrollBars=ScrollBars.Vertical,Dock=DockStyle.Fill,BackColor=Color.White,BorderStyle=BorderStyle.FixedSingle};}
     Button ButtonAt(string label,EventHandler handler){var b=new Button{Text=label,AutoSize=true,Height=36,FlatStyle=FlatStyle.Flat,BackColor=Color.White,Padding=new Padding(8,0,8,0)};b.FlatAppearance.BorderColor=Color.Silver;b.Click+=handler;return b;}
     void EnableActions(){open.Enabled=!busy;rows.Enabled=!busy;save.Enabled=cloud.Enabled=model.Enabled=doc!=null&&!busy;if(reportAction!=null) reportAction.Enabled=activeFile!=null&&!busy;}
@@ -73,12 +74,28 @@ internal sealed partial class Workspace : Form {
         }
         doc=loaded;activeFile=Path.GetFullPath(path);
         file.Text=Path.GetFileName(path);rows.BeginUpdate();rows.Items.Clear();
-        foreach(var p in doc.Items){int n=rows.Items.Count;var row=new ListViewItem("");row.SubItems.AddRange(new[]{(n+1).ToString(),p.Reason,p.Editable?(p.Text==p.Suggested?"原样":"建议精简"):"结构保护",p.Text});rows.Items.Add(row);row.Checked=p.Text!=p.Suggested;}
+        foreach(var p in doc.Items){int n=rows.Items.Count;var row=new ListViewItem("");row.SubItems.AddRange(new[]{(n+1).ToString(),p.Reason,p.Editable?(p.Text==p.Suggested?"原样":"建议精简"):"结构保护",p.Text});rows.Items.Add(row);row.Checked=false;}
         rows.EndUpdate();if(rows.Items.Count>0)rows.Items[0].Selected=true;Preview();
         summary.Text=String.Format("正文段落 {0}    ·    有文风提示 {1}    ·    初始修订建议 {2}",doc.Items.Count,doc.Items.Count(p=>p.Reason!="—"),doc.Items.Count(p=>p.Text!=p.Suggested));
         status.Text="勾选要采用的修订后导出。文风提示仅供复核。";});}
     int Selected(){return rows.SelectedIndices.Count==0?-1:rows.SelectedIndices[0];}
-    void Preview(){int n=Selected();before.Text=n<0?"":doc.Items[n].Text;after.Text=n<0?"":doc.Items[n].Suggested;}
+    void Preview(){
+        int n=Selected();
+        string original=n<0?"":doc.Items[n].Text, revised=n<0?"":doc.Items[n].Suggested;
+        before.Text=original;after.Text=revised;
+        if(original==revised)return;
+        int first=0,last=0,limit=Math.Min(original.Length,revised.Length);
+        while(first<limit && original[first]==revised[first])first++;
+        while(last<limit-first && original[original.Length-last-1]==revised[revised.Length-last-1])last++;
+        MarkChange(before,first,original.Length-first-last);
+        MarkChange(after,first,revised.Length-first-last);
+    }
+    static void MarkChange(RichTextBox box,int start,int length){
+        box.Select(start,length);
+        box.SelectionBackColor=Color.FromArgb(255,229,154);
+        box.SelectionColor=Color.FromArgb(40,35,25);
+        box.Select(start,0);
+    }
     void Export(object s,EventArgs e){using(var d=new SaveFileDialog{Filter="Word 文档|*.docx",FileName=Path.GetFileNameWithoutExtension(doc.Source)+"-审阅稿.docx",InitialDirectory=Path.GetDirectoryName(doc.Source)}){
         if(d.ShowDialog(this)!=DialogResult.OK)return;var path=d.FileName;var selected=new HashSet<int>(rows.CheckedIndices.Cast<int>());bool scrub=clean.Checked;
         bool removeReview=false;

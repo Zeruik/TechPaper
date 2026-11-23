@@ -25,7 +25,10 @@ internal static class Editor {
     internal static readonly string[,] Rules = {
         {"值得注意的是，", ""}, {"需要指出的是，", ""}, {"众所周知，", ""},
         {"在此基础之上", "在此基础上"}, {"在实际应用的过程中", "在实际应用中"},
-        {"在研究的过程中", "在研究中"}, {"对其进行了分析", "对其作了分析"},
+        {"在研究的过程中", "在研究中"}, {"在相同的条件下", "在相同条件下"},
+        {"在此情况下", "此时"}, {"所得到的结果", "结果"},
+        {"所需要的时间", "所需时间"}, {"在随后的分析过程中", "在后续分析中"},
+        {"在测量的过程中", "测量时"}, {"以便能够", "以便"}, {"对其进行了分析", "对其作了分析"},
         {"由此可以看出，", "由此可见，"},
         {"It is worth noting that ", ""}, {"in order to ", "to "},
         {"due to the fact that ", "because "}, {"at the present time", "currently"}
@@ -40,6 +43,9 @@ internal static class Editor {
                 s = Regex.Replace(s, @"\b" + Regex.Escape(from), to);
             else s = s.Replace(from,to);
         }
+        // Keep the measured quantity verbatim. Punctuation, citations and extra clauses stop the match.
+        s=Regex.Replace(s,@"对([\p{IsCJKUnifiedIdeographs}A-Za-z0-9℃°%·²³μ]{2,18})进行了(测量|记录|统计|比较)",m=>
+            m.Groups[2].Value+"了"+m.Groups[1].Value);
         return s;
     }
     internal static string Signals(string s) {

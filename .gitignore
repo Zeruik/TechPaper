@@ -1,0 +1,8 @@
+build/
+release/
+*.user
+/参考测试论文/
+
+__pycache__/
+*.pyc
+*.log

@@ -28,3 +28,9 @@ Fast-DetectGPT 以条件概率曲率衡量候选文本，涉及语言模型及�
 [Fast-DetectGPT](https://github.com/baoguangsheng/fast-detect-gpt) · [DIPPER 论文配套实现](https://github.com/martiansideofthemoon/ai-detection-paraphrases) · [M4](https://github.com/mbzuai-nlp/M4) · [非母语作者误报研究](https://scale.stanford.edu/publications/gpt-detectors-are-biased-against-non-native-english-writers)
 
 GPTZero 将来源重叠和作者类别分别扫描。报告中的文档置信度也不能换算成 AI 字数占比。TechPaper 将可定位的本地语料片段与文风线索分别呈现。[GPTZero 来源比对说明](https://support.gptzero.me/articles/1988519176-what-is-plagiarism-check) · [GPTZero 分类解释](https://support.gptzero.me/articles/4965048546-How-do-I-interpret-a-GPTZero-result)
+
+## 现代学术稿与模型版本
+
+GPTZero 于 2026-11-19 发布 5.0 说明，研究团队在论文中介绍了分层多任务分类和针对改写样本的训练。官方按领域、长度与生成模型分开报告效果。公开对照实际显示的模型为 4.1m，不能借用 5.0 的性能数据解释这次结果。[官方发布](https://gptzero.me/research/gptzero-5) · [技术报告 v2](https://arxiv.org/abs/2602.13042)
+
+DAMAGE 研究了 19 种改写工具，分别考察检测反应和语义忠实度。由此采用一次固定修订，独立记录文字编辑、数字、引用与检测结果。删除空泛的过程词可以改善可读性；能否降低某一版本的分类分数仍需配对实测。[DAMAGE 原论文](https://aclanthology.org/2025.genaidetect-1.9/) · [现代中文样稿](../examples/modern-review/README.md)

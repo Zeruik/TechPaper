@@ -25,6 +25,8 @@ internal sealed partial class Workspace {
         reportAction=ButtonAt("导出高亮报告",Report);head.Controls.Add(reportAction);
         var more=ButtonAt("设置与说明 ▾",(s,e)=>{});head.Controls.Add(more);
         var menu=new ContextMenuStrip();
+        menu.Items.Add("编辑当前段安全片段…",null,(s,e)=>EditFragments());
+        rows.DoubleClick+=(s,e)=>EditFragments();
         menu.Items.Add("选择本地比对语料 (.txt)…",null,(s,e)=>{using(var d=new OpenFileDialog{Filter="UTF-8 文本|*.txt"})if(d.ShowDialog(this)==DialogResult.OK){corpus=d.FileName;status.Text="本地比对语料："+Path.GetFileName(corpus);}});
         menu.Items.Add("清除本地语料",null,(s,e)=>{corpus=null;status.Text="已清除比对语料。";});
         menu.Items.Add("润色提示词…",null,(s,e)=>{var value=Ask("润色偏好","补充作者语气或术语偏好，保留引用和数值的规则始终生效。",prompt,false);if(value!=null){prompt=value;StorePrefs();}});
@@ -37,6 +39,25 @@ internal sealed partial class Workspace {
         try{if(File.Exists(settings)){var lines=File.ReadAllLines(settings);if(lines.Length>0)theme=lines[0];if(lines.Length>1)prompt=lines[1];}}catch(IOException){}
         ApplyTheme();
         Activated+=(s,e)=>{if(theme=="跟随系统")ApplyTheme();};
+    }
+    void EditFragments(){
+        int selected=Selected();if(busy || doc==null || selected<0)return;
+        var item=doc.Items[selected];var nodes=item.Nodes;
+        var indices=Enumerable.Range(0,nodes.Length).Where(i=>item.CanChange(nodes[i])).ToArray();
+        if(indices.Length==0){MessageBox.Show(this,"此段没有可安全编辑的文字片段。");return;}
+        using(var dlg=new Form{Text="编辑安全片段",Size=new Size(660,350),Font=Font,StartPosition=FormStartPosition.CenterParent}){
+            var select=new ComboBox{Dock=DockStyle.Top,DropDownStyle=ComboBoxStyle.DropDownList};
+            var field=new TextBox{Multiline=true,Dock=DockStyle.Fill,ScrollBars=ScrollBars.Vertical};
+            foreach(var i in indices)select.Items.Add("片段 "+(i+1)+" · "+nodes[i].Value);
+            select.SelectedIndexChanged+=(s,e)=>field.Text=item.Revisions[indices[select.SelectedIndex]];
+            select.SelectedIndex=0;
+            var apply=ButtonAt("保存当前片段并预览",(s,e)=>{
+                try{item.SetFragment(indices[select.SelectedIndex],field.Text);dlg.DialogResult=DialogResult.OK;}
+                catch(Exception ex){MessageBox.Show(dlg,ex.Message);}
+            });
+            apply.Dock=DockStyle.Bottom;dlg.Controls.Add(field);dlg.Controls.Add(select);dlg.Controls.Add(apply);
+            if(dlg.ShowDialog(this)==DialogResult.OK){rows.Items[selected].SubItems[3].Text="手动建议";rows.Items[selected].Checked=false;Preview();status.Text="已更新预览，请核对并勾选采用。";}
+        }
     }
     void StorePrefs(){try{Directory.CreateDirectory(Path.GetDirectoryName(settings));File.WriteAllLines(settings,new[]{theme,prompt});}catch(Exception ex){status.Text="偏好保存失败："+ex.Message;}}
     void ApplyTheme(){

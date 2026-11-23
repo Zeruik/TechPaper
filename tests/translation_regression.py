@@ -20,10 +20,7 @@ if __name__=="__main__":
     rows=json.loads(Path(sys.argv[2]).read_text(encoding="utf-8"))["rows"]
     print("WMT Chinese first100",len(rows),tally(x["row"]["translation"]["zh"] for x in rows))
     controls={
-        "Chinese public-domain original":["學而時習之，不亦說乎？有朋自遠方來，不亦樂乎？"],
-        "Public-domain English original":["All legislative Powers herein granted shall be vested in a Congress of the United States, which shall consist of a Senate and House of Representatives."],
         "Synthetic AI":["值得注意的是，本次测量对后续估计至关重要。","样本在室内放置两天，再测量质量。","I recorded 15 readings before the second trial."],
-        "Synthetic mixed":["學而時習之，不亦說乎？"+ "这句话可以用来说明反复练习对记忆巩固的作用。"],
         "Scientific synthetic before":["值得注意的是，两份样本的初始温度对读数至关重要。"],
         "Scientific synthetic after":["两份样本的初始温度对读数至关重要。"],
         "Synthetic grammar change":["I recorded 15 reading before the second trial."],

@@ -13,10 +13,17 @@ internal sealed class Passage {
     internal string Text, Suggested, Reason;
     internal bool Editable;
     internal string[] Revisions;
+    internal readonly HashSet<XElement> FieldText = new HashSet<XElement>();
+    internal void SetFragment(int index,string value){
+        var nodes=Nodes;
+        if(index<0 || index>=nodes.Length || !CanChange(nodes[index]))throw new InvalidOperationException("该片段受结构保护。");
+        Services.ValidateRevision(nodes[index].Value,value);
+        Revisions[index]=value;Suggested=String.Concat(Revisions);
+    }
     internal XElement[] Nodes { get { return Paragraph.Descendants(Manuscript.W+"t").ToArray(); } }
     internal bool CanChange(XElement n) {
         var r=n.Parent;
-        return Editable && r!=null && r.Name==Manuscript.W+"r" && !r.Descendants(Manuscript.W+"vertAlign").Any() &&
+        return Editable && !FieldText.Contains(n) && r!=null && r.Name==Manuscript.W+"r" && !r.Descendants(Manuscript.W+"vertAlign").Any() &&
                !Regex.IsMatch(n.Value,@"\[\s*\d|【|DOI\s*:",RegexOptions.IgnoreCase);
     }
 }
@@ -46,6 +53,7 @@ internal static class Editor {
         // Keep the measured quantity verbatim. Punctuation, citations and extra clauses stop the match.
         s=Regex.Replace(s,@"对([\p{IsCJKUnifiedIdeographs}A-Za-z0-9℃°%·²³μ]{2,18})进行了(测量|记录|统计|比较)",m=>
             m.Groups[2].Value+"了"+m.Groups[1].Value);
+        s=Regex.Replace(s,@"可以(?=通过|根据|采用|实现|降低|得到|观察|使用|提高|作为|获得|避免)","可");
         return s;
     }
     internal static string Signals(string s) {
@@ -109,11 +117,19 @@ internal sealed class Manuscript {
         int fieldDepth=0;
         bool references=false;
         foreach(var p in body.Root.Element(W+"body").Elements(W+"p")) {
-            bool touchesField=fieldDepth>0;
-            foreach(var fld in p.Descendants(W+"fldChar")){
-                touchesField=true;string kind=(string)fld.Attribute(W+"fldCharType");
-                if(kind=="begin")fieldDepth++;else if(kind=="end")fieldDepth=Math.Max(0,fieldDepth-1);
+            bool unsafeField=fieldDepth>0;
+            var fieldText=new HashSet<XElement>();
+            bool hasField=false;
+            foreach(var part in p.Descendants()){
+                if(part.Name==W+"fldChar"){
+                    hasField=true;var type=(string)part.Attribute(W+"fldCharType");
+                    if(type=="begin")fieldDepth++;
+                    else if(type=="end"){if(fieldDepth==0)unsafeField=true;fieldDepth=Math.Max(0,fieldDepth-1);}
+                    else if(type!="separate" || fieldDepth==0)unsafeField=true;
+                }else if(part.Name==W+"t" && fieldDepth>0)fieldText.Add(part);
             }
+            var instructions=p.Descendants(W+"instrText").Select(n=>n.Value.Trim()).ToArray();
+            unsafeField|=fieldDepth!=0 || hasField && (instructions.Length!=1 || !Regex.IsMatch(instructions[0],@"^REF\s",RegexOptions.IgnoreCase));
             string t=String.Concat(p.Descendants(W+"t").Where(n=>!n.Ancestors(W+"del").Any()).Select(n=>n.Value));
             if(String.IsNullOrWhiteSpace(t)) continue;
             if(Regex.IsMatch(t.Trim(),@"^(参考文献|references|bibliography)\s*[:：]?$",RegexOptions.IgnoreCase)) references=true;
@@ -121,10 +137,11 @@ internal sealed class Manuscript {
             bool special=pr!=null && (pr.Element(W+"numPr")!=null || pr.Element(W+"outlineLvl")!=null ||
                 styles.Contains((string)pr.Elements(W+"pStyle").Attributes(W+"val").FirstOrDefault() ?? ""));
             bool plain=p.Elements().All(n=>n.Name==W+"r" || n.Name==W+"pPr") &&
-                p.Elements(W+"r").All(r=>r.Elements().All(n=>n.Name==W+"rPr" || n.Name==W+"t" || n.Name==W+"footnoteReference" || n.Name==W+"endnoteReference")) &&
+                p.Elements(W+"r").All(r=>r.Elements().All(n=>n.Name==W+"rPr" || n.Name==W+"t" || n.Name==W+"footnoteReference" || n.Name==W+"endnoteReference" || n.Name==W+"instrText" || n.Name==W+"fldChar")) &&
                 !p.Descendants(W+"vanish").Any() &&
                 !Regex.IsMatch(t, "[“”「」『』\"《》]");
-            var item=new Passage{Paragraph=p,Text=t,Editable=!references && !touchesField && !special && plain && !p.Descendants(W+"pPrChange").Any() && !p.Descendants(W+"rPrChange").Any() && t.Length>=16,Reason=Editor.Signals(t)};
+            var item=new Passage{Paragraph=p,Text=t,Editable=!references && !unsafeField && !special && plain && !p.Descendants(W+"pPrChange").Any() && !p.Descendants(W+"rPrChange").Any() && t.Length>=16,Reason=Editor.Signals(t)};
+            item.FieldText.UnionWith(fieldText);
             item.Revisions=item.Nodes.Select(n=>item.CanChange(n)?Editor.Revise(n.Value):n.Value).ToArray();
             item.Suggested=item.Editable ? String.Concat(item.Revisions) : t;
             Items.Add(item);

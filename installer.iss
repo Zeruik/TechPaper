@@ -1,7 +1,7 @@
 [Setup]
 AppId={{742CF026-B6B9-41A0-B684-AC7E6547A689}
 AppName=TechPaper
-AppVersion=0.9.0-preview.5
+AppVersion=0.9.0-preview.6
 AppPublisher=TechPaper contributors
 AppPublisherURL=https://github.com/Zeruik/TechPaper
 DefaultDirName={localappdata}\Programs\TechPaper
@@ -13,7 +13,7 @@ LicenseFile=docs\TERMS.txt
 SetupIconFile=assets\TechPaper.ico
 UninstallDisplayIcon={app}\TechPaper.exe
 OutputDir=release
-OutputBaseFilename=TechPaper-Setup-0.9.0-preview.5
+OutputBaseFilename=TechPaper-Setup-0.9.0-preview.6
 ArchitecturesAllowed=x64compatible
 WizardStyle=modern
 Compression=lzma2

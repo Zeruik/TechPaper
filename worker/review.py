@@ -184,6 +184,17 @@ def hidden_text_object(obj, raw):
     return (fill or stroke) and (not fill or transparent(raw.FPDFPageObj_GetFillColor)) and (not stroke or transparent(raw.FPDFPageObj_GetStrokeColor))
 
 
+def image_page_corners(image):
+    # PDFium returns image corners in the enclosing form's coordinate system.
+    corners = image.get_quad_points()
+    form = image.container
+    while form is not None:
+        matrix = form.get_matrix()
+        corners = [matrix.on_point(x, y) for x, y in corners]
+        form = form.container
+    return corners
+
+
 def extract(path):
     from PIL import Image,ImageOps
     ext=path.suffix.lower()
@@ -208,7 +219,7 @@ def extract(path):
                             for line,(_,value,bounds) in enumerate(native_lines(text,pdf,page.get_width()),1):
                                 box=" / pt %.1f,%.1f,%.1f,%.1f"%bounds
                                 yield f"第 {i+1} 页 / 行 {line}{box}",value,"PDF 文字层；坐标原点左下，读序待核",None
-                            images=list(page.get_objects(filter=[pdf.raw.FPDF_PAGEOBJ_IMAGE],max_depth=0))
+                            images=list(page.get_objects(filter=[pdf.raw.FPDF_PAGEOBJ_IMAGE]))
                             if images:
                                 bitmap=page.render(scale=2)
                                 try:
@@ -217,8 +228,7 @@ def extract(path):
                                     seen=set()
                                     for idx,obj in enumerate(images,1):
                                         loc=f"第 {i+1} 页 / 图 {idx} / 144 dpi"
-                                        x0,y0,x1,y1=obj.get_bounds()
-                                        corners=[conv.to_bitmap(x,y) for x in (x0,x1) for y in (y0,y1)]
+                                        corners=[conv.to_bitmap(x,y) for x,y in image_page_corners(obj)]
                                         xs,ys=zip(*corners)
                                         box=(max(0,min(xs)),max(0,min(ys)),min(view.width,max(xs)),min(view.height,max(ys)))
                                         if box in seen or box[2]<=box[0] or box[3]<=box[1]:continue

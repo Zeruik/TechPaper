@@ -158,11 +158,13 @@ internal sealed partial class Workspace : Form {
         var indices=Enumerable.Range(0,doc.Items.Count).Where(i=>(choice==DialogResult.Yes || i==current) &&
             doc.Items[i].Nodes.Any(n=>doc.Items[i].CanChange(n) && n.Value.Trim().Length>=16)).ToArray();
         if(indices.Length==0){MessageBox.Show("此范围内没有足够长的可安全编辑正文片段。");return;}
-        string modelName=Ask("本机 Ollama 润色","输入已安装的本地模型名。将向 127.0.0.1:11434 逐段提交 "+indices.Length+" 段，生成结果可逐段对照。","qwen3.5:2b",false);
+        string modelName=Ask("本机 Ollama 润色","输入本机 Ollama 中已下载的模型名。确认本地模型可用后，逐段处理 "+indices.Length+" 段。可用 ollama list 查看名称。","",false);
         if(String.IsNullOrWhiteSpace(modelName))return;
         Run(async delegate{
             int done=0,unchanged=0,skipped=0;stopBatch=false;model.Text="停止润色";model.Enabled=true;
             try {
+                status.Text="正在检查本机模型，仅发送模型名…";
+                await Task.Run(()=>Services.CheckLocalModel(modelName));
                 foreach(int i in indices){
                     if(stopBatch)break;
                     var p=doc.Items[i];status.Text=String.Format("正在处理第 {0}/{1} 段…",done+unchanged+skipped+1,indices.Length);

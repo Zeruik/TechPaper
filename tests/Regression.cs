@@ -88,6 +88,14 @@ class Regression {
                 Services.ValidateRevision(safe[0], safe[1]);
                 Check(true,"scientific clarity edit allowed");
             }
+            Check(Services.LocalModelName("local-editor")=="local-editor:latest:local","explicit local source and default tag");
+            Check(Services.LocalModelName("registry.example:5000/team/editor")=="registry.example:5000/team/editor:latest:local","registry port is not a model tag");
+            Check(Services.LocalModelName(" editor:2b:local ")=="editor:2b:local","preserve local selector and tag");
+            foreach(string name in new[]{"x:cloud","x:8b-cloud","x:Cloud:local","x:local:local","",":local"}){
+                bool invalidModel=false;
+                try{Services.LocalModelName(name);}catch(InvalidOperationException){invalidModel=true;}
+                Check(invalidModel,"reject empty or nonlocal selector");
+            }
             var changesOfMeaning = new[] {
                 new[]{"The signal rose after exposure [2].","The signal fell after exposure [2]."},
                 new[]{"The signal increased before exposure [2].","The signal increased after exposure [2]."},

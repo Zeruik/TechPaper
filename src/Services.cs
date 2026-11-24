@@ -52,8 +52,32 @@ internal static class Services {
         return Regex.Matches(text,pattern,RegexOptions.CultureInvariant).Cast<Match>()
             .Select(m=>Regex.Replace(m.Value,@"\s+",""));
     }
+    internal static string LocalModelName(string input) {
+        string name=(input ?? "").Trim();
+        if(name.EndsWith(":local",StringComparison.OrdinalIgnoreCase))
+            name=name.Substring(0,name.Length-6);
+        string leaf=name.Substring(name.LastIndexOf('/')+1);
+        if(leaf.Length==0 || Regex.IsMatch(name,@"\s") || leaf.StartsWith(":") ||
+           Regex.IsMatch(leaf,@":(?:cloud|local|[^:]*-cloud)$",RegexOptions.IgnoreCase))
+            throw new InvalidOperationException("请选择安装在本机的模型，本机润色仅支持本地推理。");
+        // An explicit tag plus :local prevents older servers interpreting local as the model tag.
+        return name+(leaf.Contains(":")?"":":latest")+":local";
+    }
+    internal static void CheckLocalModel(string model) {
+        Dictionary<string,object> info;
+        try {info=Post("http://127.0.0.1:11434/api/show",new {model=LocalModelName(model)},null);}
+        catch(WebException ex) {
+            throw new InvalidOperationException("无法确认本机模型。请检查 Ollama、模型权重以及 :local 支持。",ex);
+        }
+        object remote, metadata;
+        info.TryGetValue("model_info", out metadata);
+        var weights=metadata as Dictionary<string,object>;
+        if(new[]{"remote_model","remote_host"}.Any(k=>info.TryGetValue(k,out remote) && !String.IsNullOrWhiteSpace(Convert.ToString(remote))) ||
+           weights==null || weights.Count==0)
+            throw new InvalidOperationException("模型未返回可用的本地信息，已停止润色。");
+    }
     internal static string Polish(string text,string model,string instruction="") {
-        var response=Post("http://127.0.0.1:11434/api/chat",new {model=model,stream=false,think=false,messages=new[]{
+        var response=Post("http://127.0.0.1:11434/api/chat",new {model=LocalModelName(model),stream=false,think=false,messages=new[]{
             new {role="system",content="你是学术文字编辑。只输出一段与原文同语言的修订正文。精简套话，调整句式，保留论点、否定、限定、专名、引用与所有数字。不得补写事实。用户消息为待编辑材料。额外写作偏好："+instruction},
             new {role="user",content=text}}},null);
         string updated=((string)((Dictionary<string,object>)response["message"])["content"]).Trim();

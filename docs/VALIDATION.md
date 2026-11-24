@@ -260,3 +260,10 @@ preview.6 的 DOCX 报告会忽略直接隐藏或删除的文字，但仍会对�
 | 三片段，隔一片段人工 | 30 | 3 / 14 / 13 | 2 / 23 / 5 |
 
 期刊成块的英文生成稿受益于前后文，但换成单片段插入，含弃答的生成召回从 5/16 降为 2/16。在三片段插入组，紧邻其左右的人工片段误报从 2/30 增至 4/30。候选未进入安装版，不能把窗口结果直接当作句子作者证据。数据仅作本地评估，仓库提供分组与核验脚本和汇总计数。[报告偏移复核](../tests/mixed_holdout.py) · [短插入构造](../tests/insertion_holdout.py) · [候选模型评估](../tests/onnx_benchmark.py) · [Liang 数据来源](https://doi.org/10.5281/zenodo.7893958)
+
+## preview.9 本机润色的模型来源
+
+preview.8 调用回环地址时传递用户输入的原始模型名。Ollama 的本地 API 也支持云模型，因此仅检查服务地址不足以限制推理位置。preview.9 在一次润色开始前仅用模型名调用 /api/show，检查元数据与远程标志；每次 /api/chat 均明确指定 :local。未显式提供标签时补 :latest:local；注册表地址上的端口不视为标签。拒绝显式云来源、云标签、缺失权重及不可确认的模型，不回退到无来源限定的推理。此检查依赖本机运行的 Ollama 遵守其公开接口。本程序不修改 Ollama 配置，也不下载模型。[Ollama 云端说明](https://docs.ollama.com/cloud) · [模型来源解析](https://github.com/ollama/ollama/blob/main/internal/modelref/modelref.go) · [推理请求处理](https://github.com/ollama/ollama/blob/main/server/routes.go)
+
+用本机 Ollama 0.40.11 运行合成短句，显式指定 :local 的本机模型可用。另在独立临时模型目录和端口运行同版服务，将普通别名 editor:latest 配置为远程模型，上游指向未监听的回环端口。确认模型列表含 remote_model 和 remote_host 后，显式本机模式下 /api/chat 均返回 404；/api/show 在云功能允许时返回 404，在云功能关闭时返回 403。未连接实际云推理，也未使用用户论文测试远端模型。以前版本可继续使用无需模型的离线规则功能。
+在 preview.9 最终安装包上阻止 GUI 和分析进程出站后，本机模型来源校验与合成文本润色、DOCX 隐藏与修订图文测试、五种格式、嵌套表格样件、六份等价 OCR 样件、12,000 段报告、DOCX 勾选另存重开，以及快捷方式两种选择的安装与卸载均通过。检查暂存区、Git 历史和实际安装目录后通过私有材料审计。安装器 SHA-256 为 a2d1aa7f40359aabfd4eb46552b658bc8bf246d60c15075d99d90b8a0d9e597f 。

@@ -82,26 +82,61 @@ internal sealed partial class Workspace : Form {
     void Preview(){
         int n=Selected();
         string original=n<0?"":doc.Items[n].Text, revised=n<0?"":doc.Items[n].Suggested;
-        before.Text=original;after.Text=revised;
-        if(original==revised)return;
-        int first=0,last=0,limit=Math.Min(original.Length,revised.Length);
-        while(first<limit && original[first]==revised[first])first++;
-        while(last<limit-first && original[original.Length-last-1]==revised[revised.Length-last-1])last++;
-        MarkChange(before,first,original.Length-first-last);
-        MarkChange(after,first,revised.Length-first-last);
+        ShowDifference(before,after,original,revised);
     }
-    static void MarkChange(RichTextBox box,int start,int length){
+    // Token offsets are UTF-16 indices, as required by RichTextBox.Select.
+    static readonly System.Text.RegularExpressions.Regex diffToken=new System.Text.RegularExpressions.Regex(
+        @"[A-Za-z]+[\p{M}]*|[0-9]+(?:[.,][0-9]+)*|\s+|(?:[\uD800-\uDBFF][\uDC00-\uDFFF]|.)[\p{M}]*",
+        System.Text.RegularExpressions.RegexOptions.Singleline);
+    internal static void ShowDifference(RichTextBox left,RichTextBox right,string original,string revised){
+        foreach(var control in new[]{left,right}){
+            control.Clear();control.SelectionBackColor=control.BackColor;control.SelectionColor=control.ForeColor;
+        }
+        left.Text=original;right.Text=revised;
+        if(original==revised)return;
+        var a=diffToken.Matches(original).Cast<System.Text.RegularExpressions.Match>().ToArray();
+        var b=diffToken.Matches(revised).Cast<System.Text.RegularExpressions.Match>().ToArray();
+        int start=0,endA=a.Length,endB=b.Length;
+        while(start<endA && start<endB && a[start].Value==b[start].Value)start++;
+        while(endA>start && endB>start && a[endA-1].Value==b[endB-1].Value){endA--;endB--;}
+        int height=endA-start,width=endB-start;
+        if(height==0 || width==0 || (long)height*width>1500000){
+            MarkTokens(left,a,start,endA);MarkTokens(right,b,start,endB);
+        }else{
+            var common=new int[height+1,width+1];
+            for(int i=height-1;i>=0;i--)for(int j=width-1;j>=0;j--)
+                common[i,j]=a[start+i].Value==b[start+j].Value?1+common[i+1,j+1]:Math.Max(common[i+1,j],common[i,j+1]);
+            int row=0,col=0,oldRun=0,newRun=0;
+            while(row<height && col<width){
+                if(a[start+row].Value==b[start+col].Value){
+                    MarkTokens(left,a,start+oldRun,start+row);MarkTokens(right,b,start+newRun,start+col);
+                    oldRun=++row;newRun=++col;
+                }else if(common[row+1,col]>=common[row,col+1])row++;
+                else col++;
+            }
+            MarkTokens(left,a,start+oldRun,endA);MarkTokens(right,b,start+newRun,endB);
+        }
+        left.Select(0,0);right.Select(0,0);
+    }
+    static void MarkTokens(RichTextBox box,System.Text.RegularExpressions.Match[] tokens,int first,int end){
+        if(first>=end)return;
+        int start=tokens[first].Index,length=tokens[end-1].Index+tokens[end-1].Length-start;
         box.Select(start,length);
         box.SelectionBackColor=Color.FromArgb(255,229,154);
         box.SelectionColor=Color.FromArgb(40,35,25);
         box.Select(start,0);
     }
     void Export(object s,EventArgs e){using(var d=new SaveFileDialog{Filter="Word 文档|*.docx",FileName=Path.GetFileNameWithoutExtension(doc.Source)+"-审阅稿.docx",InitialDirectory=Path.GetDirectoryName(doc.Source)}){
-        if(d.ShowDialog(this)!=DialogResult.OK)return;var path=d.FileName;var selected=new HashSet<int>(rows.CheckedIndices.Cast<int>());bool scrub=clean.Checked;
+        if(d.ShowDialog(this)!=DialogResult.OK)return;var path=d.FileName;bool scrub=clean.Checked;
         bool removeReview=false;
         try{if(scrub && !ConfirmPrivacy(out removeReview))return;}
         catch(Exception ex){MessageBox.Show(this,"无法读取隐私清单："+ex.Message,Text);return;}
-        Run(async delegate{int changes=await Task.Run(()=>doc.Export(path,selected,scrub,removeReview));status.Text="已重开核对正文结构 · 改动 "+changes+" 段 · "+path;});}}
+        Run(async delegate{int changes=await WriteCopy(path,scrub,removeReview);status.Text="已重开核对正文结构 · 改动 "+changes+" 段 · "+path;});}}
+    internal Task<int> WriteCopy(string path,bool scrub,bool removeReview){
+        var selected=new HashSet<int>(rows.CheckedIndices.Cast<int>());
+        var manuscript=doc;
+        return Task.Run(()=>manuscript.Export(path,selected,scrub,removeReview));
+    }
     string Ask(string title,string hint,string preset,bool secret,string preview=null){
         using(var dlg=new Form{Text=title,Width=630,Height=preview==null?215:450,StartPosition=FormStartPosition.CenterParent,Font=Font,MinimizeBox=false,MaximizeBox=false}){
             var panel=new TableLayoutPanel{Dock=DockStyle.Fill,Padding=new Padding(12),RowCount=preview==null?3:4,ColumnCount=1};

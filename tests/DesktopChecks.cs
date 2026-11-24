@@ -23,6 +23,31 @@ class DesktopChecks {
             var rows=Walk(f).OfType<ListView>().Single();Pump(()=>rows.Items.Count>2);Check(rows.CheckedItems.Count==0,"drop requires author selection");
             rows.Items[2].Selected=true;rows.Items[2].Focused=true;Application.DoEvents();
             Check(Walk(f).OfType<Button>().Where(x=>x.Enabled).All(x=>x.TabStop),"keyboard focusable actions");
+            using(var left=new RichTextBox())using(var right=new RichTextBox()){
+                string oldText="原样本 old [7] 温度 22.5 ℃；末段 slow。";
+                string newText="原样本 new [7] 温度 22.5 ℃；末段 fast。";
+                Workspace.ShowDifference(left,right,oldText,newText);
+                foreach(var box in new[]{left,right}){
+                    foreach(var token in new[]{"[7]","22.5","温度"}){
+                        box.Select(box.Text.IndexOf(token),token.Length);
+                        Check(box.SelectionBackColor!=Color.FromArgb(255,229,154),"unchanged evidence: "+token);
+                    }
+                    foreach(var token in box==left?new[]{"old","slow"}:new[]{"new","fast"}){
+                        box.Select(box.Text.IndexOf(token),token.Length);
+                        Check(box.SelectionBackColor==Color.FromArgb(255,229,154),"distinct change: "+token);
+                    }
+                }
+                Workspace.ShowDifference(left,right,newText,newText);
+                right.Select(newText.IndexOf("fast"),4);
+                Check(right.SelectionBackColor!=Color.FromArgb(255,229,154),"clear stale highlights");
+            }
+            var manuscript=(Manuscript)typeof(Workspace).GetField("doc",BindingFlags.Instance|BindingFlags.NonPublic).GetValue(f);
+            int adopted=manuscript.Items.FindIndex(item=>item.Text!=item.Suggested);
+            rows.Items[adopted].Checked=true;
+            var copy=Path.Combine(folder,"confirmed.docx");
+            Check(f.WriteCopy(copy,false,false).GetAwaiter().GetResult()==1,"export one author-confirmed change");
+            var reopened=new Manuscript(copy);
+            Check(Enumerable.Range(0,manuscript.Items.Count).All(i=>reopened.Items[i].Text==(i==adopted?manuscript.Items[i].Suggested:manuscript.Items[i].Text)),"unconfirmed suggestions excluded on reopen");
             if(args.Contains("--screenshot")){
                 var theme=typeof(Workspace).GetField("theme",BindingFlags.Instance|BindingFlags.NonPublic);
                 foreach(string mode in new[]{"亮色","暗色"}){

@@ -165,3 +165,7 @@ CS224N 人工误报率 42.8%，含弃答的生成召回 26.9%；在这对来源�
 上述样本无超长弃答。冻结的公开中文采样实验原稿与修订稿都被判 HUMAN，尽管它们是合成样稿。这次没有在线前后测。候选在 CS224N 子集上的生成召回为 46.9%，在 TOEFL 人工稿子集上的误报为 31.3%，不接入软件默认流程。这些数字描述所测子集，不能外推至所有学术或非母语作者。压缩候选和 ONNX 候选在扩展组上的样本数不同，禁止直接将两组百分比解释成同批材料的提升。
 
 英文 ONNX 转换仓库固定至 5e322d03f252be8c091b9d39189cd22269c95192，使用 model_quantized.onnx；中文转换固定至 dc7d85fa797513d91e026f6bd304ae8fb87c14f3，使用 model.onnx。模型权重和评估正文均未随安装包或 Git 分发。[英文模型转换](https://huggingface.co/onnx-community/chatgpt-detector-roberta-ONNX/tree/5e322d03f252be8c091b9d39189cd22269c95192) · [中文模型转换](https://huggingface.co/ZTL-UwU/chatgpt-detector-roberta-chinese-onnx/tree/dc7d85fa797513d91e026f6bd304ae8fb87c14f3)
+
+## preview.5 逐段确认
+
+桌面回归以同段两处英文修订验证四个高亮区，并检查两侧的 [7]、22.5 和温度文字均未高亮。切换为相同文本后高亮清空。通过应用导出函数只采纳一段，重开逐段核查其余建议均被排除。超过 150 万个词元配对的不同区间回退到首末差异标色。Microsoft Word 桌面脚注跳转与 F9 未测。

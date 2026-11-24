@@ -109,21 +109,45 @@ def office(path):
             for part in parts:
                 count=0
                 with z.open(part) as source:
-                    for _,p in ET.iterparse(source,events=("end",)):
-                        if p.tag!=W+"p": continue
-                        count+=1
-                        def visible(node):
-                            if node.tag in (W+"del",W+"moveFrom"): return ""
-                            if node.tag==W+"r" and any(x.get(W+"val","true").lower() not in ("false","0","off") for x in node.findall(W+"rPr/"+W+"vanish")):return ""
-                            if node.tag==W+"t":return node.text or ""
-                            if node.tag==W+"tab":return "\t"
-                            if node.tag in (W+"br",W+"cr"):return "\n"
-                            return "".join(visible(child) for child in node)
-                        t=visible(p)
-                        loc=f"{part.split('/')[-1]} / 段 {count}"
-                        if t.strip():yield loc,t,"DOCX 文字层；物理页码依赖排版",None
-                        yield from embedded(z,p,part,loc)
-                        p.clear()
+                    stack = []
+                    revision_depth = 0
+                    for event, node in ET.iterparse(source, events=("start", "end")):
+                        revision = node.tag in (W+"del", W+"moveFrom")
+                        if event == "start":
+                            stack.append(node)
+                            revision_depth += int(revision)
+                            continue
+                        stack.pop()
+                        if node.tag == W+"p":
+                            count += 1
+                            hidden_ancestor = any(hidden_run(ancestor) for ancestor in stack if ancestor.tag == W+"r")
+                            if not revision_depth and not hidden_ancestor:
+                                loc = f"{part.split('/')[-1]} / 段 {count}"
+                                t = "".join(docx_text(node))
+                                if t.strip():
+                                    yield loc,t,"DOCX 文字层；物理页码依赖排版",None
+                                yield from embedded(z,node,part,loc)
+                            node.clear()
+                        elif revision or (node.tag == W+"r" and hidden_run(node)):
+                            node.clear()
+                        revision_depth -= int(revision)
+
+
+def hidden_run(run):
+    flags = run.findall(W+"rPr/"+W+"vanish")
+    return any(f.get(W+"val", "true").lower() not in ("false", "0", "off") for f in flags)
+
+
+def docx_text(node):
+    if node.tag == W+"t":
+        yield node.text or ""
+    elif node.tag == W+"tab":
+        yield "\t"
+    elif node.tag in (W+"br", W+"cr"):
+        yield "\n"
+    else:
+        for child in node:
+            yield from docx_text(child)
 
 
 def embedded(z,node,part,loc):

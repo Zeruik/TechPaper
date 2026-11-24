@@ -161,11 +161,11 @@ internal sealed partial class Workspace : Form {
         string modelName=Ask("本机 Ollama 润色","输入已安装的本地模型名。将向 127.0.0.1:11434 逐段提交 "+indices.Length+" 段，生成结果可逐段对照。","qwen3.5:2b",false);
         if(String.IsNullOrWhiteSpace(modelName))return;
         Run(async delegate{
-            int done=0,skipped=0;stopBatch=false;model.Text="停止润色";model.Enabled=true;
+            int done=0,unchanged=0,skipped=0;stopBatch=false;model.Text="停止润色";model.Enabled=true;
             try {
                 foreach(int i in indices){
                     if(stopBatch)break;
-                    var p=doc.Items[i];status.Text=String.Format("正在处理第 {0}/{1} 段…",done+skipped+1,indices.Length);
+                    var p=doc.Items[i];status.Text=String.Format("正在处理第 {0}/{1} 段…",done+unchanged+skipped+1,indices.Length);
                     try {
                         string[] result=(string[])p.Revisions.Clone();var nodes=p.Nodes;
                         for(int j=0;j<nodes.Length;j++){
@@ -175,10 +175,16 @@ internal sealed partial class Workspace : Form {
                         }
                         p.Revisions=result;p.Suggested=String.Concat(result);
                     }
-                    catch(InvalidDataException){skipped++;continue;}
-                    rows.Items[i].SubItems[3].Text="模型建议";rows.Items[i].Checked=false;done++;Preview();
+                    catch(InvalidDataException){
+                        rows.Items[i].SubItems[3].Text=p.Suggested==p.Text?"模型改动已拦截":"保留先前建议";
+                        skipped++;continue;
+                    }
+                    rows.Items[i].Checked=false;
+                    if(p.Suggested==p.Text){rows.Items[i].SubItems[3].Text="模型返回原文";unchanged++;}
+                    else{rows.Items[i].SubItems[3].Text="模型建议";done++;}
+                    Preview();
                 }
-                status.Text=String.Format("已生成 {0} 段模型建议，{1} 段未通过数字或结构检查。核对后可勾选采用。",done,skipped);
+                status.Text=String.Format("有修改 {0} 段，原样 {1} 段，保护检查拦截 {2} 段。核对后可勾选采用。",done,unchanged,skipped);
             }finally{model.Text="本机模型润色…";}
         });
     }

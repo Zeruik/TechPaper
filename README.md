@@ -2,17 +2,17 @@
 
 <img src="assets/logo.png" alt="TechPaper 稿纸与放大镜图标" width="64">
 
-**Windows 离线论文审阅工作台 · 0.9.0-preview.7**
+**Windows 离线论文审阅工作台 · 0.9.0-preview.8**
 
 拖入论文、幻灯片或扫描图，导出带原文高亮和出处的 HTML。DOCX 还可逐段对照修订，保留原稿并另存新文件。界面提供简体中文、亮色、暗色和跟随系统外观。
 
-[下载预览版](https://github.com/Zeruik/TechPaper/releases/tag/v0.9.0-preview.7) · [验证记录](docs/VALIDATION.md) · [研究与方法](docs/RESEARCH.md) · [使用条款](docs/TERMS.txt) · [MIT 许可](LICENSE)
+[下载预览版](https://github.com/Zeruik/TechPaper/releases/tag/v0.9.0-preview.8) · [验证记录](docs/VALIDATION.md) · [研究与方法](docs/RESEARCH.md) · [使用条款](docs/TERMS.txt) · [MIT 许可](LICENSE)
 
 ![用合成材料演示逐段对照](assets/workspace.png)
 
 ## 安装和使用
 
-1. 在 Windows 10/11 x64 运行 TechPaper-Setup-0.9.0-preview.7.exe。阅读并同意条款，选择目录，按需勾选桌面快捷方式。安装范围为当前用户。安装器未作商业代码签名。可用 Get-FileHash 对照发行页 SHA256SUMS.txt。
+1. 在 Windows 10/11 x64 运行 TechPaper-Setup-0.9.0-preview.8.exe。阅读并同意条款，选择目录，按需勾选桌面快捷方式。安装范围为当前用户。安装器未作商业代码签名。可用 Get-FileHash 对照发行页 SHA256SUMS.txt。
 2. 选“打开文件”或拖入单个 DOCX、PPTX、PDF、PNG、JPG。Canva 导出的 PNG/JPG 可直接导入。安装目录 tests/sample.docx 是含表格、图片、修订、编号及引用角标的合成样件。
 3. 选“导出高亮报告”，指定新的 HTML 路径。提取及 OCR 在本机执行，运行时可取消。报告可在断网浏览器中打开。Ctrl+O 打开文件，Ctrl+R 导出报告，Esc 取消正在生成的报告。
 4. 对 DOCX 选择段落，查看原文和修订预览。规则精简建议默认勾选；本机模型建议需逐项勾选。点击“导出 DOCX 副本”，指定新文件名。原稿及已有文件受覆盖保护。
@@ -65,3 +65,5 @@ DOCX 建议逐段并列显示原文和修订范围，勾选后才写入新的副
 已从 GitHub 匿名下载 preview.5 安装器并核对 SHA-256。安装版在阻止出站通信时通过五种格式导入、六份等价 OCR 样件、12,000 段长文及确认一段后另存重开的测试。当前默认写作规则在新增中英同题测试中对 24/24 份全文弃答。实验分类器在非母语英语原稿中有明显误报，提高阈值又会漏掉生成稿，尚未启用。[公开安装器](https://github.com/Zeruik/TechPaper/releases/tag/v0.9.0-preview.5) · [详细指标与限制](docs/VALIDATION.md)
 
 preview.7 导出 DOCX 高亮报告时，直接标记为隐藏的文字运行及删除、移出修订内的文字与图片均跳过，原件及其修订记录保留。通过样式继承的隐藏格式仍须另验。
+
+preview.8 的本地模型润色将改动、原样和保护拦截分别计数，新增前后顺序、样品标签、浓度单位等常见反例检查。作者仍需逐段比较原文与建议。

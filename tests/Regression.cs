@@ -79,6 +79,36 @@ class Regression {
                 try {Services.ValidateRevision(example[0],example[1]);} catch(InvalidDataException){rejected=true;}
                 Check(rejected,"protected scientific detail: "+example[0]);
             }
+            foreach (var safe in new[] {
+                new[]{"在研究的过程中，我们在照射前检测了材料甲的吸光度。","在研究中，我们在照射前检测了材料甲的吸光度。"},
+                new[]{"由于仪器漂移，我们排除了两次重复测量。","因仪器漂移，我们排除了两次重复测量。"},
+                new[]{"We repeated the measurement in order to check the 5 nM standard.","We repeated the measurement to check the 5 nM standard."},
+                new[]{"The two runs could explain the shift after calibration.","Both runs could explain the shift after calibration."}
+            }) {
+                Services.ValidateRevision(safe[0], safe[1]);
+                Check(true,"scientific clarity edit allowed");
+            }
+            var changesOfMeaning = new[] {
+                new[]{"The signal rose after exposure [2].","The signal fell after exposure [2]."},
+                new[]{"The signal increased before exposure [2].","The signal increased after exposure [2]."},
+                new[]{"The samples were excluded from the analysis.","The samples were included in the analysis."},
+                new[]{"The mean exceeded the reference value.","The mean approached the reference value."},
+                new[]{"The calibration could explain the difference.","The calibration explains the difference."},
+                new[]{"We cannot rule out a change in the signal.","We cannot establish a change in the signal."},
+                new[]{"A concentration of 5 nM was used.","A concentration of 5 mM was used."},
+                new[]{"我们在照射前测量了吸光度[2]。","我们在照射后测量了吸光度[2]。"},
+                new[]{"材料甲的均值高于材料乙。","材料乙的均值高于材料甲。"},
+                new[]{"该指标与温度呈正向关联。","该指标与温度呈反向关联。"},
+                new[]{"样本符合纳入标准。","样本符合排除标准。"},
+                new[]{"结果支持该假设。","结果推翻该假设。"}
+            };
+            int blocked = 0;
+            foreach (var pair in changesOfMeaning) {
+                try { Services.ValidateRevision(pair[0], pair[1]); }
+                catch (InvalidDataException) { blocked++; }
+            }
+            Console.WriteLine("Scientific counterexamples blocked: "+blocked+"/"+changesOfMeaning.Length);
+            Check(blocked==changesOfMeaning.Length, "new scientific counterexamples blocked: "+blocked+"/"+changesOfMeaning.Length);
             Services.ValidateRevision("我们对 5 s 序列的峰值进行了比较[1]。","我们比较了 5 s 序列的峰值[1]。");
             bool bad=false;try{Services.ValidateRevision("偏移为 -2 mm","偏移为 2 cm");}catch(InvalidDataException){bad=true;}Check(bad,"signed numbers and unit protection");
             Check(Services.ReadScore(json).Contains("fixture"),"GPTZero response fixture");

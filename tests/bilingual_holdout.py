@@ -9,8 +9,7 @@ ARTICLES = ("PMC4764004", "PMC4858505", "PMC5434299", "PMC5579459", "PMC5972988"
 LANG = "{http://www.w3.org/XML/1998/namespace}lang"
 
 
-def collect(folder):
-    groups = defaultdict(list)
+def source_texts(folder):
     for accession in ARTICLES:
         article = ElementTree.parse(folder / (accession + ".xml")).getroot()
         meta = article.find("./front/article-meta")
@@ -30,14 +29,20 @@ def collect(folder):
                 paragraphs.extend(" ".join("".join(p.itertext()).split()) for p in child.iter("p"))
             if not paragraphs or language not in {"en", "zh"} or language in languages:
                 raise ValueError(f"Unexpected abstract metadata in {accession}")
-            groups[language + " " + role].append("\n".join(paragraphs))
+            yield accession, language, role, "\n".join(paragraphs)
             languages.add(language)
         for language in ("en", "zh"):
             generated = (folder / f"{accession}-{language}.txt").read_text(encoding="utf-8").strip()
             han = sum("\u4e00" <= char <= "\u9fff" for char in generated)
             if not generated or (language == "zh") != (han > len(generated) * .3):
                 raise ValueError(f"Check generated language in {accession}-{language}")
-            groups[language + " generated"].append(generated)
+            yield accession, language, "generated", generated
+
+
+def collect(folder):
+    groups = defaultdict(list)
+    for _, language, role, text in source_texts(folder):
+        groups[language + " " + role].append(text)
     return groups
 
 

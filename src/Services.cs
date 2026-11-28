@@ -40,17 +40,20 @@ internal static class Services {
         const string direction = @"高于|低于|小于|大于|超过|优于|劣于|上升|下降|增加|减少|升高|降低|正相关|负相关|提示|证明|证实|必然|显著|未|不|无|[<>≤≥]|\b(?i:higher|lower|greater|less|more|increase[d]?|decrease[d]?|suggests?|proves?|confirms?|significant(?:ly)?|must)\b";
         const string relation = @"纳入|排除|支持|推翻|正向|负向|反向|(?:照射|给药|处理|干预|暴露|实验|试验|治疗|加热|冷却)[前后]|" +
             @"\b(?i:before|after|prior to|following|include[ds]?|exclude[ds]?|above|below|exceed(?:s|ed)?|approach(?:es|ed)?|rise|rose|risen|fall|fell|fallen|could|likely|unlikely|rule[ds]? out|establish(?:es|ed)?)\b";
-        string anchors = "(?:"+citation+"|"+measurement+"|"+qualifier+"|"+group+"|"+relation+"|"+direction+")";
+        const string association = @"(?<association>相关|关联|有关|\b(?i:associat(?:ed|ion)|correlat(?:ed|es|ion)|linked to|related to)\b)";
+        const string causation = @"(?<causation>导致|造成|引起|影响|\b(?i:caus(?:e|es|ed)|affect(?:s|ed)?|influenc(?:e|es|ed)|led to|leads? to)\b)";
+        string anchors = "(?:"+citation+"|"+measurement+"|"+qualifier+"|"+group+"|"+relation+"|"+direction+"|"+association+"|"+causation+")";
         if (String.IsNullOrWhiteSpace(updated) || updated.Contains("\n") || updated.Contains("\r") ||
             updated.Length > text.Length * 2 + 24 ||
             !ProtectedTokens(text,measurement).SequenceEqual(ProtectedTokens(updated,measurement)) ||
             !ProtectedTokens(text,citation).SequenceEqual(ProtectedTokens(updated,citation)) ||
             !ProtectedTokens(text,anchors).SequenceEqual(ProtectedTokens(updated,anchors)))
-            throw new InvalidDataException("修订触及数值、单位、引文、组别、比较方向或结论限定词，或改变了段落结构。请逐段核对。");
+            throw new InvalidDataException("修订可能改变了数值、单位、引文、组别、比较方向、相关与因果表述、结论限定词或段落结构。请逐段核对。");
     }
     static IEnumerable<string> ProtectedTokens(string text,string pattern) {
         return Regex.Matches(text,pattern,RegexOptions.CultureInvariant).Cast<Match>()
-            .Select(m=>Regex.Replace(m.Value,@"\s+",""));
+            .Select(m=>m.Groups["association"].Success ? "<association>" :
+                       m.Groups["causation"].Success ? "<causation>" : Regex.Replace(m.Value,@"\s+",""));
     }
     internal static string[] ListLocalModels() {
         var req=(HttpWebRequest)WebRequest.Create("http://127.0.0.1:11434/api/tags");

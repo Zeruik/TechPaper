@@ -80,6 +80,9 @@ class Regression {
                 Check(rejected,"protected scientific detail: "+example[0]);
             }
             foreach (var safe in new[] {
+                new[]{"差异与温度有关。","差异与温度相关。"},
+                new[]{"The shift was associated with temperature.","The shift was related to temperature."},
+                new[]{"Temperature caused the shift.","Temperature led to the shift."},
                 new[]{"在研究的过程中，我们在照射前检测了材料甲的吸光度。","在研究中，我们在照射前检测了材料甲的吸光度。"},
                 new[]{"由于仪器漂移，我们排除了两次重复测量。","因仪器漂移，我们排除了两次重复测量。"},
                 new[]{"We repeated the measurement in order to check the 5 nM standard.","We repeated the measurement to check the 5 nM standard."},
@@ -97,6 +100,11 @@ class Regression {
                 Check(invalidModel,"reject empty or nonlocal selector");
             }
             var changesOfMeaning = new[] {
+                new[]{"我们重复了测量，以便能够判断差异是否与温度有关。现有数据不足以排除抽样误差。","为检验观测差异是否受温度影响，我们进行了重复测量；然而，现有数据尚不足以排除抽样误差的干扰。"},
+                new[]{"差异与温度有关。","差异由温度导致。"},
+                new[]{"Temperature was associated with drift.","Temperature caused drift."},
+                new[]{"Drift was caused by temperature.","Drift was linked to temperature."},
+                new[]{"X caused drift [1]. Y correlated with noise [2].","X correlated with drift [1]. Y caused noise [2]."},
                 new[]{"The signal rose after exposure [2].","The signal fell after exposure [2]."},
                 new[]{"The signal increased before exposure [2].","The signal increased after exposure [2]."},
                 new[]{"The samples were excluded from the analysis.","The samples were included in the analysis."},

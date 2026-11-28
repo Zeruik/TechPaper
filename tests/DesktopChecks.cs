@@ -42,7 +42,7 @@ class DesktopChecks {
             ctx.Response.ContentLength64=answer.Length;ctx.Response.Close(answer,false);
             Pump(()=>plain.IsCompleted);Check(plain.Result==left,"safe single run response");
         }
-        foreach(string mode in new[]{"valid","punctuation","protected","missing","splitClaim"}){
+        foreach(string mode in new[]{"valid","punctuation","protected","missing","splitClaim","duplicate"}){
             var task=Task.Run(()=>Services.PolishParagraph(passage,"fixture","",CancellationToken.None,2));
             var request=server.GetContextAsync();Pump(()=>request.IsCompleted);
             var ctx=request.Result;
@@ -57,11 +57,13 @@ class DesktopChecks {
             if(mode=="protected")values["run1"]="[8]";
             if(mode=="missing")values.Remove("run2");
             if(mode=="splitClaim")values["run0"]="We repeated the reading. We then estimated drift";
+            if(mode=="duplicate")values["run0"]=revised+". "+revised.Replace("reading to","reading, to");
             var answer=Encoding.UTF8.GetBytes(json.Serialize(new{message=new{content=json.Serialize(values)}}));
             ctx.Response.ContentLength64=answer.Length;ctx.Response.Close(answer,false);
             Pump(()=>task.IsCompleted);
             if(mode=="valid")Check(task.Result.SequenceEqual(new[]{" "+revised,"[7]",right}),"apply context edit preserving whitespace and citation");
-            else Check(task.IsFaulted && task.Exception.GetBaseException() is InvalidDataException,"reject malformed or displaced citation context: "+mode);
+            else Check(task.IsFaulted && task.Exception.GetBaseException() is InvalidDataException,"reject unsafe model response: "+mode);
+            if(mode=="duplicate")Check(task.Exception.GetBaseException().Message.Contains("输出了两遍"),"specific duplicate content warning");
             Check(passage.Revisions.SequenceEqual(new[]{left,"[7]",right}),"paragraph remains unchanged until validation completes");
         }
         const string prefix="The protocol requires at ";

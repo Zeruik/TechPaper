@@ -209,6 +209,7 @@ class Regression {
                 Check(rejected,"protected scientific detail: "+example[0]);
             }
             foreach (var safe in new[] {
+                new[]{"在环境温度稳定以后，观察员记录探头读数并检查测量台的安装状态。在环境温度稳定以后，观察员记录探头读数并检查测量台的安装状态。","在环境温度稳定以后，观察员记录探头读数并检查测量台的安装状态；在环境温度稳定以后，观察员记录探头读数并检查测量台的安装状态。"},
                 new[]{"在偏心加载时，读数为 1.7 mm。","偏心加载时记录到 1.7 mm。"},
                 new[]{"During unloading the gauge read 3 mm.","During unloading, the gauge registered 3 mm."},
                 new[]{"正接时探头读数为 0.7 V。","正接时探头显示 0.7 V。"},
@@ -245,6 +246,10 @@ class Regression {
                 Check(invalidModel,"reject empty or nonlocal selector");
             }
             var changesOfMeaning = new[] {
+                new[]{"在环境温度稳定以后，我们继续记录传感器读数，随后检查测量台的安装状态。",
+                    "温度稳定后，继续记录传感器读数，随后检查测量台的安装状态。温度稳定后继续记录传感器读数；随后检查测量台的安装状态。"},
+                new[]{"At the bench, the observer logged the readings and checked the fixture.",
+                    "At the bench, the observer logged the readings and checked the fixture. At the bench the observer logged the readings, and checked the fixture."},
                 new[]{"正接时读数为 +1.7 V，反接时为 −0.4 V。","反接时读数为 +1.7 V，正接时为 −0.4 V。"},
                 new[]{"加载时位移为 0.8 mm，卸载时为 0.2 mm。","卸载时位移为 0.8 mm，加载时为 0.2 mm。"},
                 new[]{"对中加载时读数为 1.7 mm，偏心加载时为 0.4 mm。","偏心加载时读数为 1.7 mm，对中加载时为 0.4 mm。"},

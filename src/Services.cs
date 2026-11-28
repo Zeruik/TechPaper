@@ -112,12 +112,22 @@ internal static class Services {
         if(Regex.Matches(text,purpose).Count!=Regex.Matches(updated,purpose).Count)
             throw new InvalidDataException("修订改变了明确写出的目的，请核对操作理由是否保留。");
         ValidateCitationScope(text,updated);
+        if(DoubledParagraph(updated) && !DoubledParagraph(text))
+            throw new InvalidDataException("修订将同一段内容输出了两遍，请核对重复部分。");
         var repeated=Regex.Split(updated,@"[。！？!?]|\.(?=\s|$)").Select(s=>s.Trim())
             .Where(s=>s.Length>=12).GroupBy(s=>s).Where(g=>g.Count()>1);
         foreach(var groupOfSentences in repeated){
             if(Regex.Split(text,@"[。！？!?]|\.(?=\s|$)").Count(s=>s.Trim()==groupOfSentences.Key)<groupOfSentences.Count())
                 throw new InvalidDataException("修订新增了重复句，请检查是否重复输出同一段。");
         }
+    }
+    static bool DoubledParagraph(string text){
+        if(text.Length<48)return false;
+        // Ignore spacing and sentence punctuation only. Keep signs, units and citation brackets.
+        string content=Regex.Replace(text,@"[\s，,。.;；：:！!？?、]","");
+        int half=content.Length/2;
+        return half>=24 && half*2==content.Length &&
+            String.CompareOrdinal(content,0,content,half,half)==0;
     }
     static IEnumerable<string> ProtectedTokens(string text,string pattern) {
         return Regex.Matches(text,pattern,RegexOptions.CultureInvariant).Cast<Match>()

@@ -12,6 +12,51 @@ class Regression {
     static Dictionary<string,byte[]> Read(string path) {
         using(var z=ZipFile.OpenRead(path))return z.Entries.ToDictionary(e=>e.FullName,e=>{using(var s=e.Open())using(var m=new MemoryStream()){s.CopyTo(m);return m.ToArray();}});
     }
+    static void CheckPrivacy(string source) {
+        var w=Manuscript.W;
+        string folder=Path.Combine("build","privacy-"+Guid.NewGuid());
+        Directory.CreateDirectory(folder);
+        string input=Path.Combine(folder,"source.docx");
+        var parts=Read(source);
+        Func<string,XElement> hidden=s=>new XElement(w+"r",new XElement(w+"rPr",new XElement(w+"vanish")),new XElement(w+"t",s));
+        var body=Manuscript.Parse(parts["word/document.xml"]);
+        body.Descendants(w+"ins").First().Add(hidden("hidden revision"));
+        body.Descendants(w+"p").First().Add(hidden("hidden ordinary"));
+        var comments=Manuscript.Parse(parts["word/comments.xml"]);
+        comments.Descendants(w+"p").First().Add(hidden("hidden comment"));
+        var types=Manuscript.Parse(parts["[Content_Types].xml"]);
+        types.Root.Add(new XElement(types.Root.Name.Namespace+"Override",new XAttribute("PartName","/docProps/custom.xml"),new XAttribute("ContentType","application/vnd.openxmlformats-officedocument.custom-properties+xml")));
+        var rels=Manuscript.Parse(parts["_rels/.rels"]);
+        rels.Root.Add(new XElement(rels.Root.Name.Namespace+"Relationship",new XAttribute("Id","rPrivateFixture"),new XAttribute("Type","http://schemas.openxmlformats.org/officeDocument/2006/relationships/custom-properties"),new XAttribute("Target","docProps/custom.xml")));
+        var utf8=System.Text.Encoding.UTF8;
+        parts["word/document.xml"]=utf8.GetBytes(body.ToString());
+        parts["word/comments.xml"]=utf8.GetBytes(comments.ToString());
+        parts["[Content_Types].xml"]=utf8.GetBytes(types.ToString());
+        parts["_rels/.rels"]=utf8.GetBytes(rels.ToString());
+        parts["docProps/custom.xml"]=utf8.GetBytes("<Properties xmlns='http://schemas.openxmlformats.org/officeDocument/2006/custom-properties'><property name='FixtureOwner' pid='2' fmtid='{D5CDD505-2E9C-101B-9397-08002B2CF9AE}'><s:lpwstr xmlns:s='http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes'>Synthetic editor</s:lpwstr></property></Properties>");
+        try {
+            using(var z=ZipFile.Open(input,ZipArchiveMode.Create))
+                foreach(var part in parts) using(var stream=z.CreateEntry(part.Key).Open())stream.Write(part.Value,0,part.Value.Length);
+            var original=File.ReadAllBytes(input);
+            var doc=new Manuscript(input);
+            foreach(bool extra in new[]{false,true}){
+                string preview=doc.PrivacyPreview(extra);
+                Check(preview.Contains("FixtureOwner") && preview.Contains("直接隐藏的纯文本片段：1；") && preview.Contains(extra?"将删除批注":"保留批注"),"privacy preview matches selected mode");
+                string output=Path.Combine(folder,extra?"extra.docx":"default.docx");
+                doc.Export(output,new HashSet<int>(),true,extra);
+                var result=Read(output);
+                Check(!result.ContainsKey("docProps/custom.xml") && !utf8.GetString(result["_rels/.rels"]).Contains("docProps/custom.xml") && !utf8.GetString(result["[Content_Types].xml"]).Contains("docProps/custom.xml"),"custom property and package references removed");
+                var revised=Manuscript.Parse(result["word/document.xml"]);
+                Check(revised.Descendants(w+"ins").Any(n=>n.Value.Contains("hidden revision")) && !revised.Root.Value.Contains("hidden ordinary"),"hidden revision retained and ordinary hidden text removed");
+                Check(extra?!result.ContainsKey("word/comments.xml"):result["word/comments.xml"].SequenceEqual(parts["word/comments.xml"]),"comment part matches preview");
+                new Manuscript(output);
+            }
+            Check(original.SequenceEqual(File.ReadAllBytes(input)),"privacy source intact");
+        } finally {
+            foreach(string file in Directory.GetFiles(folder))File.Delete(file);
+            Directory.Delete(folder);
+        }
+    }
     static void Main(string[] args) {
         if(args.Length==3 && args[0]=="--office-math"){
             var before=File.ReadAllBytes(args[1]);
@@ -35,6 +80,7 @@ class Regression {
         }
         string source="tests/sample.docx", path=Path.Combine("build",Guid.NewGuid()+".docx");
         var original=File.ReadAllBytes(source);var a=Read(source);var doc=new Manuscript(source);var w=Manuscript.W;
+        CheckPrivacy(source);
         try {
             var ids=new HashSet<int>(Enumerable.Range(0,doc.Items.Count));
             Check(doc.Items.Count(p=>p.Editable && p.Suggested!=p.Text)==3,"three proposed edits");

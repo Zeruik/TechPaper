@@ -91,6 +91,7 @@ internal sealed partial class Workspace {
         using(var dlg=new Form{Text="隐私清理预览",Size=new Size(610,380),Font=Font,StartPosition=FormStartPosition.CenterParent}){
             var details=Box();details.Text=doc.PrivacyPreview();
             var check=new CheckBox{Text="额外删除批注并匿名化修订者（会影响审阅记录）",Dock=DockStyle.Bottom,Height=42};
+            check.CheckedChanged+=(s,e)=>details.Text=doc.PrivacyPreview(check.Checked);
             var ok=ButtonAt("采用以上清理并导出",(s,e)=>{});ok.DialogResult=DialogResult.OK;ok.Dock=DockStyle.Bottom;
             dlg.Controls.Add(details);dlg.Controls.Add(check);dlg.Controls.Add(ok);dlg.CancelButton=null;
             bool accepted=dlg.ShowDialog(this)==DialogResult.OK;comments=check.Checked;return accepted;

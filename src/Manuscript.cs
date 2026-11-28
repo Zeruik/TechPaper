@@ -159,23 +159,36 @@ internal sealed class Manuscript {
     static bool PersonalPart(string name,bool comments) {
         return (!name.StartsWith("word/",StringComparison.OrdinalIgnoreCase) || comments) && Regex.IsMatch(name,@"^(word/(comments[^/]*|people|person)\.xml|docProps/(custom\.xml|thumbnail\.[^/]+))$",RegexOptions.IgnoreCase);
     }
+    static bool RemovableHiddenRun(XElement node) {
+        return HiddenTextRun(node) && !node.Ancestors().Any(a=>a.Name==W+"ins" || a.Name==W+"del" ||
+            a.Name==W+"moveFrom" || a.Name==W+"moveTo");
+    }
+    static IEnumerable<XElement> ExtendedProperties(XDocument doc) {
+        return doc.Root.Elements().Where(n=>new[]{"Company","Manager","Template","HyperlinkBase","TotalTime","TitlesOfParts","HeadingPairs"}.Contains(n.Name.LocalName));
+    }
     static string RelTarget(string relFile,string target) {
         string owner=relFile=="_rels/.rels" ? "" : relFile.Replace("/_rels/","/").Substring(0,relFile.Replace("/_rels/","/").Length-5);
         return Uri.UnescapeDataString(new Uri(new Uri("http://local/"+owner),target).AbsolutePath.TrimStart('/'));
     }
-    internal string PrivacyPreview() {
+    string privacyDetails;
+    string GetPrivacyDetails() {
         string[] props={"docProps/core.xml","docProps/app.xml","docProps/custom.xml"};
         var rows=new List<string>();
         foreach(string key in props) if(parts.ContainsKey(key)){
-            var nodes=Parse(parts[key]).Root.Elements();
-            if(key=="docProps/app.xml")nodes=nodes.Where(n=>new[]{"Company","Manager","Template","HyperlinkBase","TotalTime","TitlesOfParts","HeadingPairs"}.Contains(n.Name.LocalName));
+            var properties=Parse(parts[key]);
+            var nodes=key=="docProps/app.xml"?ExtendedProperties(properties):properties.Root.Elements();
             var names=nodes.Select(n=>(string)n.Attribute("name")??n.Name.LocalName).ToArray();
             if(names.Length>0)rows.Add(key+" · "+String.Join(", ",names));
         }
-        int hidden=parts.Where(k=>k.Key.StartsWith("word/") && k.Key.EndsWith(".xml")).Sum(k=>Parse(k.Value).Descendants().Count(HiddenTextRun));
+        int hidden=parts.Where(k=>k.Key.StartsWith("word/") && k.Key.EndsWith(".xml") && !PersonalPart(k.Key,true)).Sum(k=>Parse(k.Value).Descendants().Count(RemovableHiddenRun));
         rows.Add("直接隐藏的纯文本片段："+hidden+"；缩略图："+parts.Keys.Count(k=>k.StartsWith("docProps/thumbnail.")));
-        rows.Add("批注部件："+parts.Keys.Count(k=>k.StartsWith("word/comments") && k.EndsWith(".xml"))+"。默认完整保留批注和修订。");
         return String.Join("\r\n",rows);
+    }
+    internal string PrivacyPreview(bool comments=false) {
+        if(privacyDetails==null)privacyDetails=GetPrivacyDetails();
+        int reviewParts=parts.Keys.Count(k=>k.StartsWith("word/") && PersonalPart(k,true));
+        return privacyDetails+"\r\n"+(comments ? "将删除批注及人员部件："+reviewParts+"；移除批注标记并匿名化审阅者信息，保留修订正文。" :
+            "保留批注及人员部件："+reviewParts+"。保留修订记录及其中的隐藏文字。");
     }
     internal int Export(string target,HashSet<int> selected,bool clean,bool comments=false) {
         target=Path.GetFullPath(target);
@@ -204,10 +217,10 @@ internal sealed class Manuscript {
                     if(x==null)x=name=="word/document.xml"?clone:Parse(entry.Value);
                     IEnumerable<XElement> remove=Enumerable.Empty<XElement>();
                     if(name=="docProps/core.xml") remove=x.Root.Elements();
-                    else if(name=="docProps/app.xml") remove=x.Root.Elements().Where(n=>new[]{"Company","Manager","Template","HyperlinkBase","TotalTime","TitlesOfParts","HeadingPairs"}.Contains(n.Name.LocalName));
+                    else if(name=="docProps/app.xml") remove=ExtendedProperties(x);
                     else if(name=="[Content_Types].xml") remove=x.Root.Elements().Where(n=>PersonalPart(((string)n.Attribute("PartName")??"").TrimStart('/'),comments));
                     else if(name.EndsWith(".rels")) remove=x.Root.Elements().Where(n=>(string)n.Attribute("TargetMode")!="External" && PersonalPart(RelTarget(name,(string)n.Attribute("Target")),comments));
-                    else if(name.StartsWith("word/")) remove=x.Descendants().Where(n=>comments && (n.Name==W+"commentRangeStart" || n.Name==W+"commentRangeEnd" || n.Name==W+"commentReference") || HiddenTextRun(n));
+                    else if(name.StartsWith("word/") && !PersonalPart(name,true)) remove=x.Descendants().Where(n=>comments && (n.Name==W+"commentRangeStart" || n.Name==W+"commentRangeEnd" || n.Name==W+"commentReference") || RemovableHiddenRun(n));
                     var doomed=remove.ToList();changed|=doomed.Count>0;doomed.Remove();
                     if(comments && name.StartsWith("word/")) foreach(var a in x.Descendants().Attributes().Where(a=>a.Name.Namespace==W && (a.Name.LocalName=="author" || a.Name.LocalName=="initials" || a.Name.LocalName=="date")).ToList()) {
                         if(a.Name.LocalName=="author") a.Value="Anonymous"; else a.Remove();changed=true;

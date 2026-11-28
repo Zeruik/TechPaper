@@ -94,12 +94,21 @@ internal static class Services {
         const string condition=@"(?<eccentricLoad>偏心加载|\b(?i:eccentric loading)\b)|(?<centeredLoad>对中加载|\b(?i:concentric loading)\b)|"+
             @"(?<loading>加载|\b(?i:loading)\b)|(?<unloading>卸载|\b(?i:unloading)\b)|正接|反接";
         const string port=@"(?<inlet>入口|\b(?i:inlet)\b)|(?<outlet>出口|\b(?i:outlet)\b)";
-        string anchors = "(?:"+citation+"|"+identifier+"|"+measurement+"|"+quantity+"|"+question+"|"+counted+"|"+condition+"|"+port+"|"+qualifier+"|"+group+"|"+relation+"|"+direction+"|"+comparison+"|"+association+"|"+causation+")";
+        const string down=@"(?:下降|降低|减少|降|减)", up=@"(?:上升|升高|增加|增长|升|增)";
+        const string downEnglish=@"\b(?i:fell|dropped|decreased|declined|reduced)\s+";
+        const string upEnglish=@"\b(?i:rose|grew|increased|raised)\s+";
+        const string numericChange=@"(?:(?<downTo>"+down+@"(?:至|到)了?|"+downEnglish+@"(?i:to))|"+
+            @"(?<upTo>"+up+@"(?:至|到)了?|"+upEnglish+@"(?i:to))|"+
+            @"(?<downBy>"+down+@"了?|"+downEnglish+@"(?i:by))|"+
+            @"(?<upBy>"+up+@"了?|"+upEnglish+@"(?i:by)))(?=\s*[+\-−±]?\d)";
+        string anchors = "(?:"+citation+"|"+identifier+"|"+measurement+"|"+quantity+"|"+question+"|"+counted+"|"+condition+"|"+port+"|"+qualifier+"|"+group+"|"+numericChange+"|"+relation+"|"+direction+"|"+comparison+"|"+association+"|"+causation+")";
         if (String.IsNullOrWhiteSpace(updated) || updated.Contains("\n") || updated.Contains("\r") ||
             updated.Length > text.Length * 2 + 24 ||
             !ProtectedTokens(text,measurement).SequenceEqual(ProtectedTokens(updated,measurement)) ||
             !ProtectedTokens(text,citation).SequenceEqual(ProtectedTokens(updated,citation)) ||
             !ProtectedTokens(text,anchors).SequenceEqual(ProtectedTokens(updated,anchors))){
+            if(!ProtectedTokens(text,numericChange).SequenceEqual(ProtectedTokens(updated,numericChange)))
+                throw new InvalidDataException("请核对数值表示变化后的读数还是变化量，以及升降方向。");
             if(!ProtectedTokens(text,port).SequenceEqual(ProtectedTokens(updated,port)))
                 throw new InvalidDataException("入口或出口的表述发生变化，请核对测点与结果的对应关系。");
             if(!ProtectedTokens(text,condition).SequenceEqual(ProtectedTokens(updated,condition)))
@@ -151,7 +160,7 @@ internal static class Services {
                 return Regex.Replace(m.Value,@"\s+","");
             });
     }
-    static readonly string[] normalizedAnchors={"association","causation","temperatureChange","temperatureDifference","relativeDisplacement","absoluteDisplacement","openQuestion","abilityQuestion","eccentricLoad","centeredLoad","loading","unloading","inlet","outlet"};
+    static readonly string[] normalizedAnchors={"association","causation","temperatureChange","temperatureDifference","relativeDisplacement","absoluteDisplacement","openQuestion","abilityQuestion","eccentricLoad","centeredLoad","loading","unloading","inlet","outlet","upTo","downTo","upBy","downBy"};
     internal static string[] ListLocalModels() {
         var req=(HttpWebRequest)WebRequest.Create("http://127.0.0.1:11434/api/tags");
         req.Proxy=null;

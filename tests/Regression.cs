@@ -373,7 +373,12 @@ class Regression {
                 new[]{"材料甲的均值高于材料乙。","材料乙的均值高于材料甲。"},
                 new[]{"该指标与温度呈正向关联。","该指标与温度呈反向关联。"},
                 new[]{"样本符合纳入标准。","样本符合排除标准。"},
-                new[]{"结果支持该假设。","结果推翻该假设。"}
+                new[]{"结果支持该假设。","结果推翻该假设。"},
+                new[]{"只有甲组达标。","甲组也达标。"},
+                new[]{"甲组达标，只有乙组复测。","只有甲组达标，乙组复测。"},
+                new[]{"仅末次读数超过 7。","末次读数超过 7。"},
+                new[]{"仅末次读数超过 7。","仅首次读数超过 7。"},
+                new[]{"只有达到阈值才启动。","只要达到阈值就启动。"}
             };
             int blocked = 0;
             foreach (var pair in changesOfMeaning) {
@@ -383,6 +388,8 @@ class Regression {
             Console.WriteLine("Scientific counterexamples blocked: "+blocked+"/"+changesOfMeaning.Length);
             Check(blocked==changesOfMeaning.Length, "new scientific counterexamples blocked: "+blocked+"/"+changesOfMeaning.Length);
             Services.ValidateRevision("我们对 5 s 序列的峰值进行了比较[1]。","我们比较了 5 s 序列的峰值[1]。");
+            Services.ValidateRevision("只有甲组达到阈值。","仅甲组达到阈值。");
+            Services.ValidateRevision("只有末次读数超过 7。","仅有最后一次读数超过 7。");
             const string intro="本次测试包含两个不同的测量步骤：";
             var pasted=Manuscript.FromPastedText(intro+"\r\n\r\nH1（温度）：在研究的过程中，我们记录了室温[2]。 H2（时间）：在相同的条件下记录了响应时间。");
             Check(pasted.Items.Count==3 && pasted.Items[0].Text==intro && pasted.Items[1].Text.EndsWith("[2]。 ") &&

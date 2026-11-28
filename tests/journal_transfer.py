@@ -16,10 +16,12 @@ from multilingual_transfer import DIGESTS, verify_assets
 from title_controls import read_control
 
 
-def decisions(session, tokenizer, text, lang):
+def decisions(session, tokenizer, text, lang, journal_limits=None):
     low, high = document_scores(session,tokenizer,text,1,max_length=256)
     # English B is frozen by the earlier human translation calibration.
     limits = [("A", .95)] + ([("B", .9980590613029607)] if lang=="en" else [])
+    if journal_limits is not None:
+        limits.append(("J",journal_limits[lang]))
     for variant, threshold in limits:
         yield variant, "AI" if low>threshold else "HUMAN" if high<=.05 else "abstain"
 
@@ -64,18 +66,33 @@ def published_abstracts(folder, previous, accessions, prior_accessions=()):
             yield accession, lang, text
 
 
-def main(folder, previous, model, accessions, prior_accessions=(), controls=None, title_controls=None):
+def main(folder, previous, model, accessions, prior_accessions=(), controls=None, title_controls=None,
+         calibration_folder=None, calibration_ids=None):
     session, tokenizer = load_candidate(model)
+    if bool(calibration_folder) != bool(calibration_ids):
+        raise ValueError("Supply the calibration folder and accessions together")
+    journal_limits = None
+    variants = [("zh","A"),("en","A"),("en","B")]
+    if calibration_ids:
+        used=set().union(*(authors(folder/(paper+".xml")) for paper in accessions))
+        if any(authors(calibration_folder/(paper+".xml")) & used for paper in calibration_ids):
+            raise ValueError("Calibration and evaluation bylines overlap")
+        journal_limits={"en":.95,"zh":.95}
+        for _, lang, text in published_abstracts(calibration_folder, previous, calibration_ids):
+            low,_=document_scores(session,tokenizer,text,1,max_length=256)
+            journal_limits[lang]=max(journal_limits[lang], low)
+        variants.extend((lang,"J") for lang in journal_limits)
+        print("Frozen journal thresholds",journal_limits)
     counts = Counter()
     title_counts = Counter()
     for paper, lang, text in published_abstracts(folder, previous, accessions, prior_accessions):
-        for variant, label in decisions(session, tokenizer, text, lang):
+        for variant, label in decisions(session, tokenizer, text, lang, journal_limits):
             counts[lang,variant,label] += 1
         if title_controls:
             draft=read_control(title_controls,paper,lang)
-            for variant,label in decisions(session,tokenizer,draft,lang):
+            for variant,label in decisions(session,tokenizer,draft,lang,journal_limits):
                 title_counts[lang,variant,label] += 1
-    for lang,variant in (("zh","A"),("en","A"),("en","B")):
+    for lang,variant in variants:
         print(lang,variant,"N",len(accessions),"AI HUMAN abstain",*(counts[lang,variant,k] for k in ("AI","HUMAN","abstain")))
         if title_controls:
             print(lang,variant,"generated AI HUMAN abstain",*(title_counts[lang,variant,k] for k in ("AI","HUMAN","abstain")))
@@ -88,9 +105,9 @@ def main(folder, previous, model, accessions, prior_accessions=(), controls=None
                     if (row["model"], row["digest"], row["topic"], row["language"], row["finished"]) != (
                             name, digest, topic, lang, "stop") or not row["text"].strip():
                         raise ValueError("Incomplete or mismatched generated control")
-                    for variant, label in decisions(session, tokenizer, row["text"].strip(), lang):
+                    for variant, label in decisions(session, tokenizer, row["text"].strip(), lang,journal_limits):
                         counts[lang, variant, label] += 1
-            for lang, variant in (("zh","A"),("en","A"),("en","B")):
+            for lang, variant in variants:
                 print(name, lang, variant, "AI HUMAN abstain",
                       *(counts[lang,variant,k] for k in ("AI","HUMAN","abstain")))
 
@@ -101,6 +118,8 @@ if __name__ == "__main__":
         parser.add_argument(name,type=Path)
     parser.add_argument("accessions",nargs="+")
     parser.add_argument("--title-controls",type=Path)
+    parser.add_argument("--calibration-folder",type=Path)
+    parser.add_argument("--calibration-ids",nargs="+")
     parser.add_argument("--controls", type=Path, help="Score existing paired local engineering controls")
     parser.add_argument("--prior-accessions", nargs="+", default=(),
                         help="Also exclude bylines from previously tested articles in folder")

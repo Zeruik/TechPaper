@@ -119,8 +119,56 @@ internal static class Services {
             new {role="system",content="你是学术文字编辑。只输出一段与原文同语言的修订正文。精简套话，调整句式，保留论点、否定、限定、专名、引用与所有数字。不得补写事实。用户消息为待编辑材料。额外写作偏好："+instruction},
             new {role="user",content=text}}},null,cancel);
         string updated=((string)((Dictionary<string,object>)response["message"])["content"]).Trim();
-        ValidateRevision(text,updated);
-        return updated;
+        return CheckedFragment(text,updated);
+    }
+    static string CheckedFragment(string original,string proposed){
+        ValidateRevision(original,proposed);
+        // Runs can meet at an English word boundary or immediately beside a citation.
+        return original.Substring(0,original.Length-original.TrimStart().Length)+proposed.Trim()+
+            original.Substring(original.TrimEnd().Length);
+    }
+    internal static string[] PolishParagraph(Passage passage,string model,string instruction,CancellationToken cancel){
+        var nodes=passage.Nodes;
+        var result=(string[])passage.Revisions.Clone();
+        if(nodes.Length==1){
+            result[0]=PolishForBatch(nodes[0].Value,model,instruction,cancel);
+            return result;
+        }
+        var properties=new Dictionary<string,object>();
+        var targets=new Dictionary<string,int>();
+        var context=nodes.Select((node,i)=>{
+            string key="run"+i;
+            bool editable=passage.CanChange(node) && node.Value.Trim().Length>=16;
+            if(editable){properties[key]=new {type="string"};targets[key]=i;}
+            return new {id=key,editable=editable,text=node.Value};
+        }).ToArray();
+        if(targets.Count==0)return result;
+        var schema=new {type="object",properties=properties,required=targets.Keys.ToArray(),additionalProperties=false};
+        var json=new JavaScriptSerializer();
+        var response=Post("http://127.0.0.1:11434/api/chat",new {model=LocalModelName(model),stream=false,think=false,format=schema,
+            options=new {temperature=0},messages=new[]{
+                new {role="system",content="按顺序阅读同一段落的文字片段。仅润色 editable 为 true 的片段。按原 id 返回修订文字。每个片段与相邻片段衔接处的标点须和原文完全一致，引用前没有句号就不能加。禁止跨片段搬移文字、复制相邻引用或增删事实。保留原语言、数值、比较关系和结论限定。额外写作偏好："+instruction},
+                new {role="user",content=json.Serialize(context)}}},null,cancel);
+        var content=(string)((Dictionary<string,object>)response["message"])["content"];
+        Dictionary<string,object> updated;
+        try{updated=json.DeserializeObject(content) as Dictionary<string,object>;}
+        catch(ArgumentException ex){throw new InvalidDataException("模型返回的段落结构无效。",ex);}
+        catch(InvalidOperationException ex){throw new InvalidDataException("模型返回的段落结构无效。",ex);}
+        if(updated==null || updated.Count!=targets.Count || targets.Keys.Any(k=>!updated.ContainsKey(k) || !(updated[k] is string)))
+            throw new InvalidDataException("模型返回的文字片段与原段落不一致。");
+        foreach(var target in targets){
+            int i=target.Value;
+            string original=nodes[i].Value;
+            string edited=CheckedFragment(original,(string)updated[target.Key]);
+            if(i>0 && EdgePunctuation(original,true)!=EdgePunctuation(edited,true) ||
+               i<nodes.Length-1 && EdgePunctuation(original,false)!=EdgePunctuation(edited,false))
+                throw new InvalidDataException("修订改变了相邻片段衔接处的标点。");
+            result[i]=edited;
+        }
+        return result;
+    }
+    static string EdgePunctuation(string value,bool start){
+        return Regex.Match(value.Trim(),start?@"^\p{P}+":@"\p{P}+$").Value;
     }
 }
 }

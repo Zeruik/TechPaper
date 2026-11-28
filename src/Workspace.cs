@@ -189,13 +189,7 @@ internal sealed partial class Workspace : Form {
                 cancel.ThrowIfCancellationRequested();
                 var p=doc.Items[i];status.Text=String.Format("正在处理第 {0}/{1} 段…",done+unchanged+skipped+1,indices.Length);
                 try {
-                    string[] result=(string[])p.Revisions.Clone();var nodes=p.Nodes;
-                    for(int j=0;j<nodes.Length;j++){
-                        if(!p.CanChange(nodes[j]) || nodes[j].Value.Trim().Length<16)continue;
-                        string source=nodes[j].Value;
-                        cancel.ThrowIfCancellationRequested();
-                        result[j]=await Task.Run(()=>Services.PolishForBatch(source,modelName,prompt,cancel));
-                    }
+                    string[] result=await Task.Run(()=>Services.PolishParagraph(p,modelName,prompt,cancel));
                     cancel.ThrowIfCancellationRequested();
                     p.Revisions=result;p.Suggested=String.Concat(result);
                 }

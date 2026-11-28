@@ -5,6 +5,8 @@ using System.IO;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
+using System.Xml.Linq;
+using System.Web.Script.Serialization;
 using System.Linq;
 using System.Reflection;
 using System.Threading;
@@ -16,6 +18,37 @@ class DesktopChecks {
         public Uri Address;
         public WebRequest Create(Uri uri){return WebRequest.CreateDefault(new Uri(Address,uri.AbsolutePath));}
     }
+    static void CheckParagraphContext(HttpListener server){
+        var w=Manuscript.W;
+        const string left=" We repeated the reading in order to estimate drift";
+        const string right=". The reference remained below the limit.";
+        var passage=new Passage{Editable=true,Paragraph=new XElement(w+"p",
+            new XElement(w+"r",new XElement(w+"t",left)),
+            new XElement(w+"r",new XElement(w+"rPr",new XElement(w+"vertAlign",new XAttribute(w+"val","superscript"))),new XElement(w+"t","[7]")),
+            new XElement(w+"r",new XElement(w+"t",right))),Revisions=new[]{left,"[7]",right}};
+        var json=new JavaScriptSerializer();
+        foreach(string mode in new[]{"valid","punctuation","protected","missing"}){
+            var task=Task.Run(()=>Services.PolishParagraph(passage,"fixture","",CancellationToken.None));
+            var request=server.GetContextAsync();Pump(()=>request.IsCompleted);
+            var ctx=request.Result;
+            string body;
+            using(var reader=new StreamReader(ctx.Request.InputStream))body=reader.ReadToEnd();
+            var payload=json.Deserialize<System.Collections.Generic.Dictionary<string,object>>(body);
+            Check(body.Contains("[7]") && json.Serialize(payload["format"]).Contains("run2") &&
+                !json.Serialize(payload["format"]).Contains("run1"),"read-only citation in paragraph context");
+            string revised=left.Trim().Replace("in order to","to");
+            var values=new System.Collections.Generic.Dictionary<string,string>{{"run0",revised},{"run2",right}};
+            if(mode=="punctuation"){values["run0"]+=".";values["run2"]=right.Substring(2);}
+            if(mode=="protected")values["run1"]="[8]";
+            if(mode=="missing")values.Remove("run2");
+            var answer=Encoding.UTF8.GetBytes(json.Serialize(new{message=new{content=json.Serialize(values)}}));
+            ctx.Response.ContentLength64=answer.Length;ctx.Response.Close(answer,false);
+            Pump(()=>task.IsCompleted);
+            if(mode=="valid")Check(task.Result.SequenceEqual(new[]{" "+revised,"[7]",right}),"apply context edit preserving whitespace and citation");
+            else Check(task.IsFaulted && task.Exception.GetBaseException() is InvalidDataException,"reject malformed or displaced citation context: "+mode);
+            Check(passage.Revisions.SequenceEqual(new[]{left,"[7]",right}),"paragraph remains unchanged until validation completes");
+        }
+    }
     static void CheckModelStop(Workspace form,ListView rows,Manuscript manuscript,int adopted){
         var reserve=new TcpListener(IPAddress.Loopback,0);
         reserve.Start();
@@ -25,6 +58,7 @@ class DesktopChecks {
             server.Prefixes.Add(address.AbsoluteUri);
             server.Start();
             Check(WebRequest.RegisterPrefix("http://127.0.0.1:11434/api/",new LocalFixture{Address=address}),"test-only local model fixture");
+            CheckParagraphContext(server);
             rows.Items[adopted].Checked=true;
             var indices=form.PolishIndices(true);
             Check(indices.Length>0 && !indices.Contains(adopted),"keep confirmed paragraph outside batch");

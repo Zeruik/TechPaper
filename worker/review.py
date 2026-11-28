@@ -74,13 +74,21 @@ def column_order(rows, width):
 
 def ocr(image, location, offset=(0,0), columns=False):
     global ocr_engine
+    from PIL import Image
     import numpy as np
     import onnxruntime
     onnxruntime.disable_telemetry_events()
     from rapidocr_onnxruntime import RapidOCR
     if ocr_engine is None:
         ocr_engine=RapidOCR(intra_op_num_threads=2,inter_op_num_threads=2,text_score=0.0)
-    results,_ = ocr_engine(np.asarray(image.convert("RGB"))[:,:,::-1].copy())
+    if "A" in image.getbands() or "transparency" in image.info:
+        rgba = image.convert("RGBA")
+        visible = Image.new("RGB", image.size, "white")
+        visible.paste(rgba, mask=rgba.getchannel("A"))
+        location += "（透明区域按白底合成）"
+    else:
+        visible = image.convert("RGB")
+    results,_ = ocr_engine(np.asarray(visible)[:,:,::-1].copy())
     if not results:
         yield location,"","OCR 未识别文字",None
     else:

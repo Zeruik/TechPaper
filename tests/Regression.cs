@@ -332,8 +332,32 @@ class Regression {
             var mentionParts=Manuscript.SplitPastedText(mention);
             Check(mentionParts.Length==2 && mentionParts[0].Contains("H2 was") && String.Concat(mentionParts)==mention,
                 "a prose mention does not interrupt an explicitly labelled hypothesis list");
+            foreach(var expectedParts in new[]{
+                new[]{"考察两项指标：","（1）入口值为 12.5 Pa。[3] ","（2）出口值稳定。"},
+                new[]{"(1) Measure the inlet at 12.5 Pa. [2] ","(2) Inspect the outlet."}
+            }){
+                var listText=String.Concat(expectedParts);
+                Check(Manuscript.SplitPastedText(listText).SequenceEqual(expectedParts),
+                    "numbered pasted list retains text, units and references");
+            }
+            foreach(string ordinary in new[]{
+                "数值为 1.25 和 2.50，见式（1）与式（2）。",
+                "（1）校准入口。（3）记录出口。",
+                "见表：(1) 12.5 Pa; (2) 18.5 Pa.",
+                "[1] 有研究支持。[2] 尚待复核。"
+            })Check(Manuscript.SplitPastedText(ordinary).SequenceEqual(new[]{ordinary}),
+                "ambiguous numbering remains one review unit");
             var pastedFile=Path.Combine("build",Guid.NewGuid()+".docx");
             try{
+                const string numbered="（1）在研究的过程中，我们记录了入口读数[2]。 （2）出口读数为 12.5 Pa。";
+                var numberedDoc=Manuscript.FromPastedText(numbered);
+                numberedDoc.Export(pastedFile,new HashSet<int>{0},false);
+                var checkedCopy=new Manuscript(pastedFile);
+                Check(checkedCopy.Items.Count==2 && numberedDoc.Items[0].Suggested!=numberedDoc.Items[0].Text &&
+                    checkedCopy.Items[0].Text==numberedDoc.Items[0].Suggested && checkedCopy.Items[1].Text==numberedDoc.Items[1].Text &&
+                    !checkedCopy.Items[0].CanChange(checkedCopy.Items[0].Nodes.Single(n=>n.Value=="[2]")),
+                    "numbered paste reopens with one selected edit and protected reference");
+                File.Delete(pastedFile);
                 Manuscript.FromPastedText(citationList).Export(pastedFile,new HashSet<int>(),false);
                 var reopenedList=new Manuscript(pastedFile);
                 Check(reopenedList.Items.Select(p=>p.Text).SequenceEqual(sections) &&

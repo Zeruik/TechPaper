@@ -25,6 +25,7 @@ if($Test){
     & ./build/Regression.exe
     if($LASTEXITCODE){throw 'Regression failed'}
 }
+if(!$AppOnly){& ./build-worker.ps1}
 if($DesktopTest){
     if(!(Test-Path 'build/dist/review-worker/review-worker.exe')){throw 'Run build-worker.ps1 before -DesktopTest'}
     & $csc /nologo /codepage:65001 /main:DesktopChecks /win32icon:assets\TechPaper.ico /out:build\DesktopChecks.exe @refs tests\DesktopChecks.cs src\*.cs
@@ -33,7 +34,6 @@ if($DesktopTest){
     if($LASTEXITCODE){throw 'Desktop regression failed'}
 }
 if($AppOnly){return}
-& ./build-worker.ps1
 if(!$Iscc){$Iscc=(Get-Command ISCC.exe -ErrorAction SilentlyContinue).Source}
 if(!$Iscc){
     $install=Get-ItemProperty 'HKCU:/Software/Microsoft/Windows/CurrentVersion/Uninstall/*','HKLM:/SOFTWARE/WOW6432Node/Microsoft/Windows/CurrentVersion/Uninstall/*' -ErrorAction SilentlyContinue |

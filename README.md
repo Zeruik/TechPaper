@@ -47,7 +47,7 @@ Word 编辑仅支持常规 Transitional DOCX。系统在原 OOXML 包中定点�
 需要 Windows x64、系统 .NET Framework 4.7.2+、Python 3.12 x64 和 Inno Setup 6。完整构建首次从 PyPI 安装锁定依赖。终端用户运行安装包无需 Python。
 
 ~~~powershell
-.\build.ps1 -Test -Iscc 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
+.\build.ps1 -Test -DesktopTest
 .\build\TechPaper.exe
 .\build\worker-env\Scripts\python.exe tests\long_report.py
 ~~~

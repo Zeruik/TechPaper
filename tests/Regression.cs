@@ -59,6 +59,31 @@ class Regression {
             Directory.Delete(folder);
         }
     }
+    static void CheckRunBoundaries(string source){
+        var w=Manuscript.W;
+        string input=Path.Combine("build",Guid.NewGuid()+".docx"),output=input+".copy.docx";
+        var parts=Read(source);
+        var xml=Manuscript.Parse(parts["word/document.xml"]);
+        var body=xml.Root.Element(w+"body");
+        Func<string,string,XElement> paragraph=(left,right)=>new XElement(w+"p",
+            new XElement(w+"r",new XElement(w+"t",left)),
+            new XElement(w+"r",new XElement(w+"rPr",new XElement(w+"i")),new XElement(w+"t",right)));
+        body.AddFirst(paragraph("我们认为","值得注意的是，样本量有限。"),
+                      paragraph("We repeated the test ","in order to measure drift."));
+        parts["word/document.xml"]=System.Text.Encoding.UTF8.GetBytes(xml.ToString(SaveOptions.DisableFormatting));
+        try{
+            using(var zip=ZipFile.Open(input,ZipArchiveMode.Create))
+                foreach(var part in parts)using(var stream=zip.CreateEntry(part.Key).Open())
+                    stream.Write(part.Value,0,part.Value.Length);
+            var doc=new Manuscript(input);
+            Check(doc.Items[0].Suggested==doc.Items[0].Text,"formatting split is not a new sentence opening");
+            Check(doc.Items[1].Suggested=="We repeated the test to measure drift.","safe multi-run rule edit");
+            doc.Export(output,new HashSet<int>{0,1},false);
+            var actual=Manuscript.Parse(Read(output)["word/document.xml"]);
+            body.Elements(w+"p").Skip(1).First().Descendants(w+"t").Last().Value="to measure drift.";
+            Check(XNode.DeepEquals(xml.Root,actual.Root),"only confirmed text changes in multi-run roundtrip");
+        }finally{File.Delete(input);File.Delete(output);}
+    }
     static void Main(string[] args) {
         if(args.Length==3 && args[0]=="--installed-privacy"){
             var assembly=System.Reflection.Assembly.LoadFrom(Path.GetFullPath(args[1]));
@@ -89,6 +114,7 @@ class Regression {
         string source="tests/sample.docx", path=Path.Combine("build",Guid.NewGuid()+".docx");
         var original=File.ReadAllBytes(source);var a=Read(source);var doc=new Manuscript(source);var w=Manuscript.W;
         CheckPrivacy(source,typeof(Manuscript));
+        CheckRunBoundaries(source);
         try {
             var ids=new HashSet<int>(Enumerable.Range(0,doc.Items.Count));
             Check(doc.Items.Count(p=>p.Editable && p.Suggested!=p.Text)==3,"three proposed edits");

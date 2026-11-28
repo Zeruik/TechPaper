@@ -18,7 +18,11 @@ internal sealed class Passage {
         var nodes=Nodes;
         if(index<0 || index>=nodes.Length || !CanChange(nodes[index]))throw new InvalidOperationException("该片段受结构保护。");
         Services.ValidateRevision(nodes[index].Value,value);
-        Revisions[index]=value;Suggested=String.Concat(Revisions);
+        var revised=(string[])Revisions.Clone();
+        revised[index]=value;
+        string suggested=String.Concat(revised);
+        if(nodes.Length>1)Services.ValidateRevision(Text,suggested);
+        Revisions=revised;Suggested=suggested;
     }
     internal XElement[] Nodes { get { return Paragraph.Descendants(Manuscript.W+"t").ToArray(); } }
     internal bool CanChange(XElement n) {
@@ -147,6 +151,12 @@ internal sealed class Manuscript {
             item.FieldText.UnionWith(fieldText);
             item.Revisions=item.Nodes.Select(n=>item.CanChange(n)?Editor.Revise(n.Value):n.Value).ToArray();
             item.Suggested=item.Editable ? String.Concat(item.Revisions) : t;
+            if(item.Revisions.Length>1 && item.Suggested!=t && item.Suggested!=Editor.Revise(t)){
+                // Formatting can split a word or clause. Keep the paragraph when
+                // applying rules per run disagrees with the continuous text.
+                item.Revisions=item.Nodes.Select(n=>n.Value).ToArray();
+                item.Suggested=t;
+            }
             Items.Add(item);
         }
     }

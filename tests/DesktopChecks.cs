@@ -22,7 +22,7 @@ class DesktopChecks {
         var w=Manuscript.W;
         const string left=" We repeated the reading in order to estimate drift";
         const string right=". The reference remained below the limit.";
-        var passage=new Passage{Editable=true,Paragraph=new XElement(w+"p",
+        var passage=new Passage{Editable=true,Text=left+"[7]"+right,Paragraph=new XElement(w+"p",
             new XElement(w+"r",new XElement(w+"t",left)),
             new XElement(w+"r",new XElement(w+"rPr",new XElement(w+"vertAlign",new XAttribute(w+"val","superscript"))),new XElement(w+"t","[7]")),
             new XElement(w+"r",new XElement(w+"t",right))),Revisions=new[]{left,"[7]",right}};
@@ -48,6 +48,25 @@ class DesktopChecks {
             else Check(task.IsFaulted && task.Exception.GetBaseException() is InvalidDataException,"reject malformed or displaced citation context: "+mode);
             Check(passage.Revisions.SequenceEqual(new[]{left,"[7]",right}),"paragraph remains unchanged until validation completes");
         }
+        const string prefix="The protocol requires at ";
+        const string suffix="least 5 mL of the reference solution.";
+        var split=new Passage{Editable=true,Text=prefix+suffix,Suggested=prefix+suffix,
+            Paragraph=new XElement(w+"p",new XElement(w+"r",new XElement(w+"t",prefix)),
+                new XElement(w+"r",new XElement(w+"t",suffix))),Revisions=new[]{prefix,suffix}};
+        var changed=suffix.Replace("least","most");
+        var pending=Task.Run(()=>Services.PolishParagraph(split,"fixture","",CancellationToken.None));
+        var next=server.GetContextAsync();Pump(()=>next.IsCompleted);
+        var reply=Encoding.UTF8.GetBytes(json.Serialize(new{message=new{content=json.Serialize(new{run0=prefix,run1=changed})}}));
+        next.Result.Response.ContentLength64=reply.Length;next.Result.Response.Close(reply,false);
+        Pump(()=>pending.IsCompleted);
+        Check(pending.IsFaulted && pending.Exception.GetBaseException() is InvalidDataException,
+            "model cannot reverse a threshold split across Word runs");
+        bool rejected=false;
+        try{split.SetFragment(1,changed);}catch(InvalidDataException){rejected=true;}
+        Check(rejected && split.Revisions.SequenceEqual(new[]{prefix,suffix}) && split.Suggested==split.Text,
+            "manual split-threshold rejection preserves preview");
+        split.SetFragment(1,suffix.Replace("of the reference solution","of reference solution"));
+        Check(split.Suggested.Contains("at least 5 mL of reference solution"),"safe edit beside split threshold");
     }
     static void CheckModelStop(Workspace form,ListView rows,Manuscript manuscript,int adopted){
         var reserve=new TcpListener(IPAddress.Loopback,0);

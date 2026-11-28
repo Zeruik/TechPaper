@@ -167,6 +167,7 @@ internal static class Services {
                 throw new InvalidDataException("修订改变了相邻片段衔接处的标点。");
             result[i]=edited;
         }
+        ValidateRevision(passage.Text,String.Concat(result));
         return result;
     }
     static string EdgePunctuation(string value,bool start){

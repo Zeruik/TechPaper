@@ -157,6 +157,17 @@ class DesktopChecks {
                 Workspace.ShowDifference(left,right,newText,newText);
                 right.Select(newText.IndexOf("fast"),4);
                 Check(right.SelectionBackColor!=Color.FromArgb(255,229,154),"clear stale highlights");
+                string middle=String.Concat(Enumerable.Range(0,320).Select(i=>"测点 "+i+"，保留记录。"));
+                Workspace.ShowDifference(left,right,"试验开始。"+middle+"原始说明。","实验重新开始。"+middle+"说明。");
+                foreach(var box in new[]{left,right}){
+                    box.Select(box.Text.IndexOf("160"),3);
+                    Check(box.SelectionBackColor!=Color.FromArgb(255,229,154),"long paragraph preserves unchanged interior");
+                }
+                left.Select(left.Text.LastIndexOf("原始"),2);
+                Check(left.SelectionBackColor==Color.FromArgb(255,229,154),"long paragraph deletion");
+                right.Select(right.Text.IndexOf("重新"),2);
+                Check(right.SelectionBackColor==Color.FromArgb(255,229,154),"long paragraph insertion");
+                Check(Workspace.ShowDifference(left,right,new string('甲',2000),new string('乙',2000)),"coarse fallback is disclosed");
             }
             var manuscript=(Manuscript)typeof(Workspace).GetField("doc",BindingFlags.Instance|BindingFlags.NonPublic).GetValue(f);
             int adopted=manuscript.Items.FindIndex(item=>item.Text!=item.Suggested);

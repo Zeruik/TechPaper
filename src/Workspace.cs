@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using System.Threading;
 using System.Windows.Forms;
 using System.Reflection;
+using System.Text.RegularExpressions;
 [assembly:AssemblyTitle("TechPaper")]
 [assembly:AssemblyProduct("TechPaper")]
 [assembly:AssemblyVersion("0.9.0.0")]
@@ -15,7 +16,7 @@ namespace TechPaper {
 internal sealed partial class Workspace : Form {
     Manuscript doc;
     readonly Color teal=Color.FromArgb(8,81,80), ink=Color.FromArgb(33,52,53);
-    Label file,summary,status;
+    Label file,summary,status,revisionLabel;
     ListView rows;
     RichTextBox before,after;
     CheckBox clean;
@@ -45,7 +46,7 @@ internal sealed partial class Workspace : Form {
         var compare=new TableLayoutPanel{Dock=DockStyle.Fill,ColumnCount=2,RowCount=2,Padding=new Padding(0,8,0,0)};
         for(int i=0;i<2;i++)compare.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,50));
         compare.RowStyles.Add(new RowStyle(SizeType.Absolute,28));compare.RowStyles.Add(new RowStyle(SizeType.Percent,100));
-        compare.Controls.Add(LabelAt("原文",10),0,0);compare.Controls.Add(LabelAt("修订预览",10),1,0);
+        compare.Controls.Add(LabelAt("原文",10),0,0);revisionLabel=LabelAt("修订预览",10);compare.Controls.Add(revisionLabel,1,0);
         before=CompareBox();after=CompareBox();compare.Controls.Add(before,0,1);compare.Controls.Add(after,1,1);layout.Controls.Add(compare,0,3);
         var actions=new FlowLayoutPanel{Dock=DockStyle.Fill,WrapContents=false,Padding=new Padding(0,8,0,0)};
         save=ButtonAt("导出 DOCX 副本",Export);save.BackColor=teal;save.ForeColor=Color.White;
@@ -85,41 +86,75 @@ internal sealed partial class Workspace : Form {
     void Preview(){
         int n=Selected();
         string original=n<0?"":doc.Items[n].Text, revised=n<0?"":doc.Items[n].Suggested;
-        ShowDifference(before,after,original,revised);
+        bool coarse=ShowDifference(before,after,original,revised);
+        revisionLabel.Text=coarse?"修订预览（部分差异按范围标出）":"修订预览";
     }
     // Token offsets are UTF-16 indices, as required by RichTextBox.Select.
     static readonly System.Text.RegularExpressions.Regex diffToken=new System.Text.RegularExpressions.Regex(
         @"[A-Za-z]+[\p{M}]*|[0-9]+(?:[.,][0-9]+)*|\s+|(?:[\uD800-\uDBFF][\uDC00-\uDFFF]|.)[\p{M}]*",
         System.Text.RegularExpressions.RegexOptions.Singleline);
-    internal static void ShowDifference(RichTextBox left,RichTextBox right,string original,string revised){
+    internal static bool ShowDifference(RichTextBox left,RichTextBox right,string original,string revised){
         foreach(var control in new[]{left,right}){
             control.Clear();control.SelectionBackColor=control.BackColor;control.SelectionColor=control.ForeColor;
         }
         left.Text=original;right.Text=revised;
-        if(original==revised)return;
+        if(original==revised)return false;
         var a=diffToken.Matches(original).Cast<System.Text.RegularExpressions.Match>().ToArray();
         var b=diffToken.Matches(revised).Cast<System.Text.RegularExpressions.Match>().ToArray();
-        int start=0,endA=a.Length,endB=b.Length;
-        while(start<endA && start<endB && a[start].Value==b[start].Value)start++;
-        while(endA>start && endB>start && a[endA-1].Value==b[endB-1].Value){endA--;endB--;}
-        int height=endA-start,width=endB-start;
-        if(height==0 || width==0 || (long)height*width>1500000){
-            MarkTokens(left,a,start,endA);MarkTokens(right,b,start,endB);
-        }else{
-            var common=new int[height+1,width+1];
-            for(int i=height-1;i>=0;i--)for(int j=width-1;j>=0;j--)
-                common[i,j]=a[start+i].Value==b[start+j].Value?1+common[i+1,j+1]:Math.Max(common[i+1,j],common[i,j+1]);
-            int row=0,col=0,oldRun=0,newRun=0;
-            while(row<height && col<width){
-                if(a[start+row].Value==b[start+col].Value){
-                    MarkTokens(left,a,start+oldRun,start+row);MarkTokens(right,b,start+newRun,start+col);
-                    oldRun=++row;newRun=++col;
-                }else if(common[row+1,col]>=common[row,col+1])row++;
-                else col++;
-            }
-            MarkTokens(left,a,start+oldRun,endA);MarkTokens(right,b,start+newRun,endB);
-        }
+        int budget=1500000;bool coarse=false;
+        MarkDifference(left,right,a,b,0,a.Length,0,b.Length,ref budget,ref coarse);
         left.Select(0,0);right.Select(0,0);
+        return coarse;
+    }
+    static void MarkDifference(RichTextBox left,RichTextBox right,Match[] a,Match[] b,
+        int fromA,int endA,int fromB,int endB,ref int budget,ref bool coarse){
+        while(fromA<endA && fromB<endB && a[fromA].Value==b[fromB].Value){fromA++;fromB++;}
+        while(endA>fromA && endB>fromB && a[endA-1].Value==b[endB-1].Value){endA--;endB--;}
+        int height=endA-fromA,width=endB-fromB;
+        if(height==0 || width==0){
+            MarkTokens(left,a,fromA,endA);MarkTokens(right,b,fromB,endB);
+            return;
+        }
+        long cells=(long)(height+1)*(width+1);
+        if(cells>budget){
+            // Split on eight tokens shared by both paragraphs. Choose the nearest
+            // proportional position when the same wording occurs more than once.
+            const int span=8;
+            if(height>=span*4 && width>=span){
+                foreach(int quarter in new[]{2,1,3}){
+                    int pivot=fromA+(int)((long)(height-span)*quarter/4);
+                    int expected=fromB+(int)((long)(width-span)*quarter/4);
+                    int best=-1;
+                    for(int j=fromB;j<=endB-span;j++){
+                        if(best>=0 && Math.Abs(j-expected)>=Math.Abs(best-expected))continue;
+                        int k=0;
+                        while(k<span && a[pivot+k].Value==b[j+k].Value)k++;
+                        if(k==span)best=j;
+                        if(best==expected)break;
+                    }
+                    if(best<0)continue;
+                    MarkDifference(left,right,a,b,fromA,pivot,fromB,best,ref budget,ref coarse);
+                    MarkDifference(left,right,a,b,pivot+span,endA,best+span,endB,ref budget,ref coarse);
+                    return;
+                }
+            }
+            coarse=true;
+            MarkTokens(left,a,fromA,endA);MarkTokens(right,b,fromB,endB);
+            return;
+        }
+        budget-=(int)cells;
+        var common=new int[height+1,width+1];
+        for(int i=height-1;i>=0;i--)for(int j=width-1;j>=0;j--)
+            common[i,j]=a[fromA+i].Value==b[fromB+j].Value?1+common[i+1,j+1]:Math.Max(common[i+1,j],common[i,j+1]);
+        int row=0,col=0,oldRun=0,newRun=0;
+        while(row<height && col<width){
+            if(a[fromA+row].Value==b[fromB+col].Value){
+                MarkTokens(left,a,fromA+oldRun,fromA+row);MarkTokens(right,b,fromB+newRun,fromB+col);
+                oldRun=++row;newRun=++col;
+            }else if(common[row+1,col]>=common[row,col+1])row++;
+            else col++;
+        }
+        MarkTokens(left,a,fromA+oldRun,endA);MarkTokens(right,b,fromB+newRun,endB);
     }
     static void MarkTokens(RichTextBox box,System.Text.RegularExpressions.Match[] tokens,int first,int end){
         if(first>=end)return;

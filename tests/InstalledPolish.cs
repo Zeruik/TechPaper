@@ -89,6 +89,28 @@ class InstalledPolish {
         string output=Path.Combine(Path.GetTempPath(),Guid.NewGuid()+".docx");
         var source=File.ReadAllBytes(input);
         var type=Assembly.LoadFrom(Path.GetFullPath(args[0])).GetType("TechPaper.Workspace",true);
+        var statics=BindingFlags.Static|BindingFlags.NonPublic;
+        using(var left=new RichTextBox())using(var right=new RichTextBox()){
+            string middle=String.Concat(Enumerable.Range(0,320).Select(i=>"测点 "+i+"，保留记录。"));
+            bool coarse=(bool)type.GetMethod("ShowDifference",statics).Invoke(null,new object[]{left,right,"试验开始。"+middle+"原始说明。","实验重新开始。"+middle+"说明。"});
+            Require(!coarse,"unexpected coarse diff");
+            foreach(var box in new[]{left,right}){
+                box.Select(box.Text.IndexOf("160"),3);
+                Require(box.SelectionBackColor!=System.Drawing.Color.FromArgb(255,229,154),"unchanged middle highlighted");
+            }
+            right.Select(right.Text.IndexOf("重新"),2);
+            Require(right.SelectionBackColor==System.Drawing.Color.FromArgb(255,229,154),"missing inserted text highlight");
+        }
+        var check=type.Assembly.GetType("TechPaper.Services").GetMethod("ValidateRevision",statics);
+        foreach(var example in new[]{
+            new[]{"该文报告了支座在潮湿环境下的变形特征[7]。","该文通过反复试验报告了支座在潮湿环境下的变形特征[7]。","研究方法","重复试验"},
+            new[]{"At the bench, the observer logged the readings and checked the fixture.","At the bench, the observer logged the readings and checked the fixture. At the bench the observer logged the readings, and checked the fixture.","重复输出","输出了两遍"}}){
+            bool refused=false;
+            try{check.Invoke(null,new object[]{example[0],example[1]});}
+            catch(TargetInvocationException ex){refused=ex.InnerException is InvalidDataException && ex.InnerException.Message.Contains(example[3]);}
+            Require(refused,example[2]);
+        }
+        Console.WriteLine("PASS installed long diff and guards for unsupported methods and doubled output");
         var reserve=new TcpListener(IPAddress.Loopback,0);reserve.Start();
         var address=new Uri("http://127.0.0.1:"+((IPEndPoint)reserve.LocalEndpoint).Port+"/");reserve.Stop();
         Require(WebRequest.RegisterPrefix("http://127.0.0.1:11434/api/",new Fixture{Address=address}),"fixture registration");
@@ -153,23 +175,23 @@ class InstalledPolish {
                     var dlg=Application.OpenForms.Cast<Form>().SingleOrDefault(d=>d.Text=="粘贴文本并自动分段");
                     if(dlg==null)return;
                     timer.Stop();
-                    dlg.Controls.OfType<TextBox>().Single().Text="H1（温度）：在研究的过程中，我们记录了室温[2]。 H2（时间）：在相同的条件下记录响应时间。";
+                    dlg.Controls.OfType<TextBox>().Single().Text="提出以下假设： H1（温度）：在研究的过程中，我们记录了室温。[2] H2（时间）：在相同的条件下记录响应时间。";
                     var ok=dlg.Controls.OfType<Button>().Single();
-                    Require(ok.Text=="导入 2 段","paste count");
+                    Require(ok.Text=="导入 3 段","paste count");
                     ok.PerformClick();
                 };
                 timer.Start();type.GetMethod("PasteParagraphs",Fields).Invoke(form,null);
-                Wait(()=>rows.Items.Count==2 && rows.Items[0].SubItems[4].Text.StartsWith("H1"));
+                Wait(()=>rows.Items.Count==3 && rows.Items[1].SubItems[4].Text.StartsWith("H1"));
             }
             Require(rows.CheckedIndices.Count==0,"pasted paragraphs already selected");
-            rows.Items[0].Checked=true;
+            rows.Items[1].Checked=true;
             try{
                 var pasted=(Task<int>)type.GetMethod("WriteCopy",Fields).Invoke(form,new object[]{output,false,false});
                 Wait(()=>pasted.IsCompleted);Require(pasted.Result==1,"paste adoption count");
                 using(var zip=ZipFile.OpenRead(output)){
                     var body=Body(zip);var w=body.Root.Name.Namespace;
                     var paragraphs=body.Descendants(w+"p").Select(p=>p.Value).ToArray();
-                    Require(paragraphs.SequenceEqual(new[]{"H1（温度）：在研究中，我们记录了室温[2]。 ","H2（时间）：在相同的条件下记录响应时间。"}),"paste export mismatch");
+                    Require(paragraphs.SequenceEqual(new[]{"提出以下假设： ","H1（温度）：在研究中，我们记录了室温。[2] ","H2（时间）：在相同的条件下记录响应时间。"}),"paste export mismatch");
                 }
             }finally{if(File.Exists(output))File.Delete(output);}
             Console.WriteLine("PASS installed paste dialog, automatic segmentation and selective export");

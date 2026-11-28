@@ -216,14 +216,14 @@ class DesktopChecks {
                     var dlg=Application.OpenForms.Cast<Form>().SingleOrDefault(v=>v.Text=="粘贴文本并自动分段");
                     if(dlg==null)return;
                     enter.Stop();
-                    Walk(dlg).OfType<TextBox>().Single().Text="H1（温度）：在研究的过程中，我们记录了室温[2]。 H2（时间）：在相同的条件下记录响应时间。";
+                    Walk(dlg).OfType<TextBox>().Single().Text="提出以下假设： H1（温度）：在研究的过程中，我们记录了室温。 [2] H2（时间）：在相同的条件下记录响应时间。";
                     var button=Walk(dlg).OfType<Button>().Single();
-                    Check(button.Enabled && button.Text=="导入 2 段","paste dialog previews paragraph count");
+                    Check(button.Enabled && button.Text=="导入 3 段","paste dialog previews paragraph count");
                     button.PerformClick();
                 };
                 enter.Start();
                 typeof(Workspace).GetMethod("PasteParagraphs",BindingFlags.Instance|BindingFlags.NonPublic).Invoke(f,null);
-                Pump(()=>rows.Items.Count==2 && rows.Items[0].SubItems[4].Text.StartsWith("H1"));
+                Pump(()=>rows.Items.Count==3 && rows.Items[1].SubItems[4].Text.EndsWith("[2] "));
             }
             Check(rows.CheckedItems.Count==0,"pasted suggestions require author selection");
             var pastedReport=Path.Combine(folder,"pasted.html");

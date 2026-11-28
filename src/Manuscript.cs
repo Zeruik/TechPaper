@@ -126,19 +126,29 @@ internal sealed class Manuscript {
         if(body.Root.Name!=W+"document") throw new InvalidDataException("请在 Word 中另存为常规 DOCX 后再导入。");
         ReadParagraphs();
     }
-    static readonly Regex hypothesisStart=new Regex(@"(?:^|(?<=[。！？；;.!?]))[ \t]*(?=H([1-9]\d{0,2})(?:[ \t]*[（(:：、]|[ \t]+))");
+    const string pastedCitation=@"[\[［【]\s*\d+(?:\s*[,，、;；\-–—]\s*\d+)*\s*[\]］】]";
+    static readonly Regex hypothesisStart=new Regex(
+        @"(?:^|(?<intro>[:：])|[。！？；;.!?](?:[ \t]*"+pastedCitation+@")*)[ \t]*(?<marker>H(?<number>[1-9][0-9]{0,2}))(?:(?<label>[ \t]*[（(:：、])|[ \t]+)");
     internal static string[] SplitPastedText(string text){
         var result=new List<string>();
         foreach(string line in Regex.Split(text,@"\r\n|[\r\n\u2028\u2029]")){
             if(String.IsNullOrWhiteSpace(line))continue;
             var markers=hypothesisStart.Matches(line).Cast<Match>().ToArray();
-            if(markers.Length<2 || markers[0].Index!=0 ||
-               markers.Where((m,i)=>Int32.Parse(m.Groups[1].Value)!=i+1).Any()){
+            if(markers.Length<2){result.Add(line);continue;}
+            bool intro=markers[0].Groups["intro"].Success;
+            bool labelled=markers[0].Groups["label"].Success;
+            if((markers[0].Index!=0 && !intro) || (intro && !labelled)){
                 result.Add(line);continue;
             }
+            markers=markers.Where((m,i)=>(i==0 || !m.Groups["intro"].Success) &&
+                (!labelled || m.Groups["label"].Success)).ToArray();
+            if(markers.Length<2 || markers.Where((m,i)=>Int32.Parse(m.Groups["number"].Value)!=i+1).Any()){
+                result.Add(line);continue;
+            }
+            if(intro)result.Add(line.Substring(0,markers[0].Groups["marker"].Index));
             for(int i=0;i<markers.Length;i++){
-                int start=i==0?0:markers[i].Index+markers[i].Length;
-                int end=i+1<markers.Length?markers[i+1].Index+markers[i+1].Length:line.Length;
+                int start=i==0 && !intro?0:markers[i].Groups["marker"].Index;
+                int end=i+1<markers.Length?markers[i+1].Groups["marker"].Index:line.Length;
                 result.Add(line.Substring(start,end-start));
             }
         }
@@ -150,7 +160,7 @@ internal sealed class Manuscript {
         return new Manuscript(lines);
     }
     private Manuscript(string[] lines){
-        const string citations=@"([\[［【]\s*\d+(?:\s*[,，、;；\-–—]\s*\d+)*\s*[\]］】])";
+        const string citations="("+pastedCitation+")";
         body=new XDocument(new XElement(W+"document",new XAttribute(XNamespace.Xmlns+"w",W.NamespaceName),new XElement(W+"body",
             lines.Select(line=>new XElement(W+"p",Regex.Split(line,citations).Where(t=>t.Length>0)
                 .Select(t=>new XElement(W+"r",new XElement(W+"t",new XAttribute(XNamespace.Xml+"space","preserve"),t))))))));

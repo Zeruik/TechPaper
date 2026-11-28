@@ -304,8 +304,22 @@ class Regression {
                 pasted.Items[2].Text.StartsWith("H2") && !pasted.Items[1].CanChange(pasted.Items[1].Nodes.Single(n=>n.Value=="[2]")),
                 "paste preserves hypothesis boundaries, spacing and citations");
             Check(Manuscript.SplitPastedText("在 H1 和 H2 条件下测试。读数为 -1.25 mm。").Length==1,"ordinary prose stays one paragraph");
+            const string citationList="本研究提出以下假设： H1（测温）：复测可减小偏差。 [4][6–8]  H2（位移）：待检验。［9］ H3（读数）：待复核。";
+            var sections=Manuscript.SplitPastedText(citationList);
+            Check(sections.SequenceEqual(new[]{"本研究提出以下假设： ","H1（测温）：复测可减小偏差。 [4][6–8]  ","H2（位移）：待检验。［9］ ","H3（读数）：待复核。"}) &&
+                String.Concat(sections)==citationList,"inline introduction and post-sentence citations roundtrip");
+            const string mention="H1（条件）：第一项待检验。 H2 was considered separately. H2（时间）：第二项待检验。";
+            var mentionParts=Manuscript.SplitPastedText(mention);
+            Check(mentionParts.Length==2 && mentionParts[0].Contains("H2 was") && String.Concat(mentionParts)==mention,
+                "a prose mention does not interrupt an explicitly labelled hypothesis list");
             var pastedFile=Path.Combine("build",Guid.NewGuid()+".docx");
             try{
+                Manuscript.FromPastedText(citationList).Export(pastedFile,new HashSet<int>(),false);
+                var reopenedList=new Manuscript(pastedFile);
+                Check(reopenedList.Items.Select(p=>p.Text).SequenceEqual(sections) &&
+                    reopenedList.Items[1].Nodes.Where(n=>n.Value=="[4]" || n.Value=="[6–8]").Count(n=>!reopenedList.Items[1].CanChange(n))==2,
+                    "reopened hypothesis list preserves exact text and both citation runs");
+                File.Delete(pastedFile);
                 pasted.Export(pastedFile,new HashSet<int>{1},false);
                 Check(new Manuscript(pastedFile).Items.Select(p=>p.Text).SequenceEqual(new[]{intro,pasted.Items[1].Suggested,pasted.Items[2].Text}),"pasted DOCX reopens with only selected edits");
             }finally{File.Delete(pastedFile);}

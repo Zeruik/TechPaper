@@ -52,6 +52,29 @@ internal static class Services {
         return Regex.Matches(text,pattern,RegexOptions.CultureInvariant).Cast<Match>()
             .Select(m=>Regex.Replace(m.Value,@"\s+",""));
     }
+    internal static string[] ListLocalModels() {
+        var req=(HttpWebRequest)WebRequest.Create("http://127.0.0.1:11434/api/tags");
+        req.Proxy=null;
+        req.AllowAutoRedirect=false;
+        req.Timeout=req.ReadWriteTimeout=5000;
+        try {
+            using(var response=req.GetResponse())
+            using(var reader=new StreamReader(response.GetResponseStream())){
+                var list=new JavaScriptSerializer().Deserialize<Dictionary<string,object>>(reader.ReadToEnd());
+                var models=(System.Collections.IEnumerable)list["models"];
+                var names=new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
+                foreach(Dictionary<string,object> entry in models){
+                    object value;
+                    if(!entry.TryGetValue("name",out value) || !(value is string))continue;
+                    string name=(string)value;
+                    if(new[]{"remote_model","remote_host"}.Any(k=>entry.TryGetValue(k,out value) && !String.IsNullOrWhiteSpace(Convert.ToString(value))))continue;
+                    try{LocalModelName(name);}catch(InvalidOperationException){continue;}
+                    names.Add(name);
+                }
+                return names.ToArray();
+            }
+        }catch(WebException ex){throw new InvalidOperationException("无法读取本机模型列表。请启动 Ollama 后重试。",ex);}
+    }
     internal static string LocalModelName(string input) {
         string name=(input ?? "").Trim();
         if(name.EndsWith(":local",StringComparison.OrdinalIgnoreCase))

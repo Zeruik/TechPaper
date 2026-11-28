@@ -33,7 +33,7 @@ internal sealed partial class Workspace {
         var themes=new ToolStripMenuItem("外观");menu.Items.Add(themes);
         foreach(string label in new[]{"跟随系统","亮色","暗色"})themes.DropDownItems.Add(label,null,(s,e)=>{theme=((ToolStripItem)s).Text;ApplyTheme();StorePrefs();});
         menu.Items.Add("关于 / 使用说明",null,(s,e)=>MessageBox.Show(this,
-            "TechPaper 0.9.0-preview.9 公开预览版\r\n\r\n打开或拖入 DOCX、PPTX、PDF、PNG 或 JPG。导出离线 HTML 可查看原句、所在位置、OCR 置信和本地语料命中。DOCX 可另外导出逐段修订副本。\r\n\r\nAI、MIX、HUMAN 仅为透明规则的低置信写作提示；不足时弃答。来源相似度仅检查指定语料的原文重叠。\r\n\r\n离线分析无需账户。本地模型需要 Ollama；在线 GPTZero 需要用户主动发送预览文本。文档不作遥测。请核对参考文献、数字、分页及批注。\r\n\r\n主程序 MIT；依赖许可见 third-party。Ctrl+O 打开，Ctrl+R 导出报告，Esc 取消报告。","关于 TechPaper"));
+            "TechPaper 0.9.0-preview.10 公开预览版\r\n\r\n打开或拖入 DOCX、PPTX、PDF、PNG 或 JPG。导出离线 HTML 可查看原句、所在位置、OCR 置信和本地语料命中。DOCX 可另外导出逐段修订副本。\r\n\r\nAI、MIX、HUMAN 仅为透明规则的低置信写作提示；不足时弃答。来源相似度仅检查指定语料的原文重叠。\r\n\r\n离线分析无需账户。本地模型需要 Ollama；在线 GPTZero 需要用户主动发送预览文本。文档不作遥测。请核对参考文献、数字、分页及批注。\r\n\r\n主程序 MIT；依赖许可见 third-party。Ctrl+O 打开，Ctrl+R 导出报告，Esc 取消报告。","关于 TechPaper"));
         more.Click+=(s,e)=>menu.Show(more,new Point(0,more.Height));
         KeyDown+=(s,e)=>{if(e.Control&&e.KeyCode==Keys.O&&!busy){e.SuppressKeyPress=true;Choose(s,e);}else if(e.Control&&e.KeyCode==Keys.R&&reportAction.Enabled){e.SuppressKeyPress=true;Report(s,e);}else if(e.KeyCode==Keys.Escape&&worker!=null){e.SuppressKeyPress=true;CancelReport();}};
         try{if(File.Exists(settings)){var lines=File.ReadAllLines(settings);if(lines.Length>0)theme=lines[0];if(lines.Length>1)prompt=lines[1];}}catch(IOException){}
@@ -60,16 +60,20 @@ internal sealed partial class Workspace {
         }
     }
     void StorePrefs(){try{Directory.CreateDirectory(Path.GetDirectoryName(settings));File.WriteAllLines(settings,new[]{theme,prompt});}catch(Exception ex){status.Text="偏好保存失败："+ex.Message;}}
+    bool? appliedDarkTheme;
     void ApplyTheme(){
         bool dark=theme=="暗色" || theme=="跟随系统" && Convert.ToInt32(Registry.GetValue(@"HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize","AppsUseLightTheme",1))==0;
+        if(appliedDarkTheme==dark)return;
+        appliedDarkTheme=dark;
         Color bg=dark?Color.FromArgb(26,38,37):Color.FromArgb(248,248,243), surface=dark?Color.FromArgb(40,55,54):Color.White;
         ForeColor=dark?Color.WhiteSmoke:ink;BackColor=bg;
         foreach(var c in Children(this)){
             c.ForeColor=ForeColor;
-            if(c is TextBox || c is ListView || c is Button)c.BackColor=surface;
+            if(c is TextBoxBase || c is ListView || c is Button)c.BackColor=surface;
             else if(c is Panel || c is Label || c is CheckBox)c.BackColor=bg;
         }
         save.BackColor=teal;save.ForeColor=Color.White;
+        Preview();
     }
     static IEnumerable<Control> Children(Control c){foreach(Control child in c.Controls){yield return child;foreach(var other in Children(child))yield return other;}}
     internal static void ValidateFile(string path){

@@ -137,12 +137,18 @@ internal sealed partial class Workspace : Form {
         var manuscript=doc;
         return Task.Run(()=>manuscript.Export(path,selected,scrub,removeReview));
     }
-    string Ask(string title,string hint,string preset,bool secret,string preview=null){
+    string Ask(string title,string hint,string preset,bool secret,string preview=null,string[] options=null){
         using(var dlg=new Form{Text=title,Width=630,Height=preview==null?215:450,StartPosition=FormStartPosition.CenterParent,Font=Font,MinimizeBox=false,MaximizeBox=false}){
             var panel=new TableLayoutPanel{Dock=DockStyle.Fill,Padding=new Padding(12),RowCount=preview==null?3:4,ColumnCount=1};
             panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));panel.RowStyles.Add(new RowStyle(SizeType.Absolute,58));
             panel.RowStyles.Add(new RowStyle(SizeType.Absolute,40));
-            panel.Controls.Add(LabelAt(hint,9));var input=new TextBox{Text=preset,Dock=DockStyle.Fill,UseSystemPasswordChar=secret};panel.Controls.Add(input);
+            panel.Controls.Add(LabelAt(hint,9));Control input;
+            if(options==null)input=new TextBox{Text=preset,UseSystemPasswordChar=secret};
+            else{
+                var list=new ComboBox{DropDownStyle=ComboBoxStyle.DropDownList};
+                list.Items.AddRange(options);list.SelectedIndex=0;input=list;
+            }
+            input.Dock=DockStyle.Fill;panel.Controls.Add(input);
             if(preview!=null){panel.RowStyles.Add(new RowStyle(SizeType.Percent,100));var box=Box();box.Text=preview;panel.Controls.Add(box);}
             panel.RowStyles.Add(new RowStyle(SizeType.Absolute,42));var ok=ButtonAt(secret?"发送以上文本":"生成修订预览",(s,e)=>{});ok.DialogResult=DialogResult.OK;panel.Controls.Add(ok);
             dlg.Controls.Add(panel);dlg.AcceptButton=ok;return dlg.ShowDialog(this)==DialogResult.OK?input.Text.Trim():null;}}
@@ -158,9 +164,12 @@ internal sealed partial class Workspace : Form {
         var indices=Enumerable.Range(0,doc.Items.Count).Where(i=>(choice==DialogResult.Yes || i==current) &&
             doc.Items[i].Nodes.Any(n=>doc.Items[i].CanChange(n) && n.Value.Trim().Length>=16)).ToArray();
         if(indices.Length==0){MessageBox.Show("此范围内没有足够长的可安全编辑正文片段。");return;}
-        string modelName=Ask("本机 Ollama 润色","输入本机 Ollama 中已下载的模型名。确认本地模型可用后，逐段处理 "+indices.Length+" 段。可用 ollama list 查看名称。","",false);
-        if(String.IsNullOrWhiteSpace(modelName))return;
         Run(async delegate{
+            status.Text="正在读取本机 Ollama 模型列表…";
+            string[] available=await Task.Run(()=>Services.ListLocalModels());
+            if(available.Length==0){status.Text="本机 Ollama 没有可选模型。";return;}
+            string modelName=Ask("选择本机 Ollama 模型","选择用于润色的已安装模型，共处理 "+indices.Length+" 段。","",false,null,available);
+            if(modelName==null){status.Text="已取消本机润色。";return;}
             int done=0,unchanged=0,skipped=0;stopBatch=false;model.Text="停止润色";model.Enabled=true;
             try {
                 status.Text="正在检查本机模型，仅发送模型名…";

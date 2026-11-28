@@ -43,6 +43,27 @@ class DesktopChecks {
             }
             var manuscript=(Manuscript)typeof(Workspace).GetField("doc",BindingFlags.Instance|BindingFlags.NonPublic).GetValue(f);
             int adopted=manuscript.Items.FindIndex(item=>item.Text!=item.Suggested);
+            rows.Items[adopted].Selected=true;
+            var modeField=typeof(Workspace).GetField("theme",BindingFlags.Instance|BindingFlags.NonPublic);
+            var applyTheme=typeof(Workspace).GetMethod("ApplyTheme",BindingFlags.Instance|BindingFlags.NonPublic);
+            foreach(string mode in new[]{"暗色","亮色","暗色"}){
+                modeField.SetValue(f,mode);
+                applyTheme.Invoke(f,null);
+                foreach(var box in Walk(f).OfType<RichTextBox>()){
+                    Check(box.BackColor.ToArgb()==rows.BackColor.ToArgb(),"comparison uses theme surface");
+                    bool commonText=false,colorsMatch=true;
+                    for(int k=0;k<box.TextLength;k++){
+                        box.Select(k,1);
+                        if(box.SelectionBackColor.ToArgb()==Color.FromArgb(255,229,154).ToArgb()){
+                            colorsMatch &= box.SelectionColor.ToArgb()==Color.FromArgb(40,35,25).ToArgb();
+                        }else{
+                            commonText=true;
+                            colorsMatch &= box.SelectionColor.ToArgb()==box.ForeColor.ToArgb();
+                        }
+                    }
+                    Check(commonText && colorsMatch,"readable comparison after theme switch");
+                }
+            }
             rows.Items[adopted].Checked=true;
             var copy=Path.Combine(folder,"confirmed.docx");
             Check(f.WriteCopy(copy,false,false).GetAwaiter().GetResult()==1,"export one author-confirmed change");

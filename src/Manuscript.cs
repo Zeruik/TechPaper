@@ -174,10 +174,56 @@ internal sealed class Manuscript {
         parts["_rels/.rels"]=Encoding.UTF8.GetBytes("<Relationships xmlns='http://schemas.openxmlformats.org/package/2006/relationships'><Relationship Id='rId1' Type='http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument' Target='word/document.xml'/></Relationships>");
         ReadParagraphs();
     }
+    sealed class RunVisibility {
+        readonly Dictionary<string,XElement> styles=new Dictionary<string,XElement>();
+        readonly Dictionary<string,bool> toggles=new Dictionary<string,bool>();
+        readonly Dictionary<string,string> defaults=new Dictionary<string,string>();
+        readonly bool hiddenByDefault;
+        internal RunVisibility(XElement root){
+            if(root==null)return;
+            hiddenByDefault=Enabled(root.Elements(W+"docDefaults").Elements(W+"rPrDefault").Elements(W+"rPr").Elements(W+"vanish").FirstOrDefault());
+            foreach(var style in root.Elements(W+"style")){
+                string id=(string)style.Attribute(W+"styleId");
+                if(String.IsNullOrEmpty(id))continue;
+                styles[id]=style;
+                if(IsOn((string)style.Attribute(W+"default")))
+                    defaults[(string)style.Attribute(W+"type") ?? ""]=id;
+            }
+        }
+        static bool IsOn(string value){return value=="1" || value=="true" || value=="on";}
+        static bool Enabled(XElement flag){return flag!=null && IsOn((string)flag.Attribute(W+"val") ?? "true");}
+        bool StyleToggle(XElement reference,string kind){
+            string id=(string)(reference==null?null:reference.Attribute(W+"val"));
+            if(id==null || !styles.ContainsKey(id))defaults.TryGetValue(kind,out id);
+            if(id==null)return false;
+            bool toggle;
+            if(toggles.TryGetValue(id,out toggle))return toggle;
+            string current=id;
+            var seen=new HashSet<string>();
+            XElement style;
+            while(current!=null && styles.TryGetValue(current,out style)){
+                if(!seen.Add(current))throw new InvalidDataException("Word 样式继承存在循环，无法确定正文可见性。");
+                toggle^=Enabled(style.Elements(W+"rPr").Elements(W+"vanish").FirstOrDefault());
+                current=(string)style.Elements(W+"basedOn").Attributes(W+"val").FirstOrDefault();
+            }
+            toggles[id]=toggle;
+            return toggle;
+        }
+        internal bool ParagraphHidden(XElement paragraph){
+            return hiddenByDefault ^ StyleToggle(paragraph.Elements(W+"pPr").Elements(W+"pStyle").FirstOrDefault(),"paragraph");
+        }
+        internal bool RunHidden(XElement run,bool paragraphHidden){
+            var properties=run.Element(W+"rPr");
+            var flag=properties==null?null:properties.Element(W+"vanish");
+            return flag!=null?Enabled(flag):paragraphHidden ^ StyleToggle(properties==null?null:properties.Element(W+"rStyle"),"character");
+        }
+    }
     void ReadParagraphs(){
         var styles=new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        if(parts.ContainsKey("word/styles.xml")){
-            var definitions=Parse(parts["word/styles.xml"]).Descendants(W+"style").ToList();
+        var styleRoot=parts.ContainsKey("word/styles.xml")?Parse(parts["word/styles.xml"]).Root:null;
+        var visibility=new RunVisibility(styleRoot);
+        if(styleRoot!=null){
+            var definitions=styleRoot.Elements(W+"style").ToList();
             foreach(var st in definitions){
                 string name=(string)st.Elements(W+"name").Attributes(W+"val").FirstOrDefault() ?? "";
                 if(st.Descendants(W+"outlineLvl").Any() || st.Descendants(W+"numPr").Any() ||
@@ -206,7 +252,10 @@ internal sealed class Manuscript {
             }
             var instructions=p.Descendants(W+"instrText").Select(n=>n.Value.Trim()).ToArray();
             unsafeField|=fieldDepth!=0 || hasField && (instructions.Length!=1 || !Regex.IsMatch(instructions[0],@"^REF\s",RegexOptions.IgnoreCase));
-            string t=String.Concat(p.Descendants(W+"t").Where(n=>!n.Ancestors(W+"del").Any()).Select(n=>n.Value));
+            bool paragraphHidden=visibility.ParagraphHidden(p);
+            var hiddenRuns=new HashSet<XElement>(p.Descendants(W+"r").Where(r=>visibility.RunHidden(r,paragraphHidden)));
+            string t=String.Concat(p.Descendants(W+"t").Where(n=>!n.Ancestors(W+"del").Any() &&
+                !n.Ancestors(W+"moveFrom").Any() && !n.Ancestors(W+"r").Any(hiddenRuns.Contains)).Select(n=>n.Value));
             if(String.IsNullOrWhiteSpace(t)) continue;
             if(Regex.IsMatch(t.Trim(),@"^(参考文献|references|bibliography)\s*[:：]?$",RegexOptions.IgnoreCase)) references=true;
             var pr=p.Element(W+"pPr");
@@ -214,7 +263,7 @@ internal sealed class Manuscript {
                 styles.Contains((string)pr.Elements(W+"pStyle").Attributes(W+"val").FirstOrDefault() ?? ""));
             bool plain=p.Elements().All(n=>n.Name==W+"r" || n.Name==W+"pPr") &&
                 p.Elements(W+"r").All(r=>r.Elements().All(n=>n.Name==W+"rPr" || n.Name==W+"t" || n.Name==W+"footnoteReference" || n.Name==W+"endnoteReference" || n.Name==W+"instrText" || n.Name==W+"fldChar")) &&
-                !p.Descendants(W+"vanish").Any() &&
+                hiddenRuns.Count==0 &&
                 !Regex.IsMatch(t, "[“”「」『』\"《》]");
             var item=new Passage{Paragraph=p,Text=t,Editable=!references && !unsafeField && !special && plain && !p.Descendants(W+"pPrChange").Any() && !p.Descendants(W+"rPrChange").Any() && t.Length>=16,Reason=Editor.Signals(t)};
             item.FieldText.UnionWith(fieldText);

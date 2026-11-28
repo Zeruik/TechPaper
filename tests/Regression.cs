@@ -12,6 +12,34 @@ class Regression {
     static Dictionary<string,byte[]> Read(string path) {
         using(var z=ZipFile.OpenRead(path))return z.Entries.ToDictionary(e=>e.FullName,e=>{using(var s=e.Open())using(var m=new MemoryStream()){s.CopyTo(m);return m.ToArray();}});
     }
+    static void CheckVisibleReviewText(string source){
+        var w=Manuscript.W;
+        var parts=Read(source);
+        var styles=Manuscript.Parse(parts["word/styles.xml"]);
+        styles.Root.Add(
+            new XElement(w+"style",new XAttribute(w+"type","paragraph"),new XAttribute(w+"styleId","Secret"),new XElement(w+"rPr",new XElement(w+"vanish"))),
+            new XElement(w+"style",new XAttribute(w+"type","paragraph"),new XAttribute(w+"styleId","Derived"),new XElement(w+"basedOn",new XAttribute(w+"val","Secret"))),
+            new XElement(w+"style",new XAttribute(w+"type","character"),new XAttribute(w+"styleId","Toggle"),new XElement(w+"rPr",new XElement(w+"vanish"))));
+        var body=Manuscript.Parse(parts["word/document.xml"]);
+        var para=XElement.Parse("<w:p xmlns:w='"+w+"'><w:pPr><w:pStyle w:val='Derived'/></w:pPr>"+
+            "<w:r><w:t>HIDDEN_STYLE</w:t></w:r><w:r><w:rPr><w:rStyle w:val='Toggle'/></w:rPr><w:t>visible toggle</w:t></w:r>"+
+            "<w:r><w:rPr><w:vanish w:val='0'/></w:rPr><w:t> and visible override</w:t></w:r></w:p>");
+        body.Root.Element(w+"body").AddFirst(para);
+        body.Root.Element(w+"body").AddFirst(XElement.Parse("<w:p xmlns:w='"+w+"'><w:r><w:rPr><w:vanish/></w:rPr><w:t>HIDDEN_DIRECT</w:t></w:r></w:p>"));
+        parts["word/document.xml"]=System.Text.Encoding.UTF8.GetBytes(body.ToString());
+        parts["word/styles.xml"]=System.Text.Encoding.UTF8.GetBytes(styles.ToString());
+        string input=Path.Combine("build",Guid.NewGuid()+".docx"),output=Path.Combine("build",Guid.NewGuid()+".docx");
+        try{
+            using(var zip=ZipFile.Open(input,ZipArchiveMode.Create))
+                foreach(var part in parts)using(var stream=zip.CreateEntry(part.Key).Open())stream.Write(part.Value,0,part.Value.Length);
+            var doc=new Manuscript(input);
+            Check(doc.Items[0].Text=="visible toggle and visible override" && !doc.Items[0].Editable &&
+                doc.Items.All(p=>!p.Text.Contains("HIDDEN_") && !p.Suggested.Contains("HIDDEN_")),
+                "visible review text excludes direct and inherited hidden runs; both overrides respected");
+            doc.Export(output,new HashSet<int>(),false);
+            Check(Read(output)["word/document.xml"].SequenceEqual(parts["word/document.xml"]),"hidden runs preserved in ordinary copy");
+        }finally{File.Delete(input);File.Delete(output);}
+    }
     static void CheckPrivacy(string source, Type manuscriptType) {
         var w=Manuscript.W;
         string folder=Path.Combine("build","privacy-"+Guid.NewGuid());
@@ -149,6 +177,7 @@ class Regression {
         string source="tests/sample.docx", path=Path.Combine("build",Guid.NewGuid()+".docx");
         var original=File.ReadAllBytes(source);var a=Read(source);var doc=new Manuscript(source);var w=Manuscript.W;
         CheckPrivacy(source,typeof(Manuscript));
+        CheckVisibleReviewText(source);
         CheckRunBoundaries(source);
         try {
             var ids=new HashSet<int>(Enumerable.Range(0,doc.Items.Count));

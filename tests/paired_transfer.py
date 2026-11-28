@@ -13,7 +13,7 @@ from calibration_benchmark import document_scores
 from multilingual_transfer import DIGESTS, verify_assets
 
 
-def evaluate(folder, model):
+def independent_folds(folder):
     sources = {}
     for paper in ARTICLES:
         path = folder / (paper + ".xml")
@@ -24,6 +24,11 @@ def evaluate(folder, model):
     folds = components(sources)
     if len(folds) < 2:
         raise ValueError("No independent calibration fold")
+    return folds
+
+
+def evaluate(folder, model):
+    folds = independent_folds(folder)
     print("Held-out fold sizes:", [len(fold) for fold in folds])
     verify_assets(model, DIGESTS)
     ort.disable_telemetry_events()

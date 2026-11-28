@@ -35,12 +35,10 @@ def load_candidate(model):
     return session, tokenizer
 
 
-def main(folder, previous, model, accessions, prior_accessions=(), controls=None):
+def published_abstracts(folder, previous, accessions, prior_accessions=()):
     occupied = set().union(*(authors(previous / (paper + ".xml")) for paper in ARTICLES))
     for paper in prior_accessions:
         occupied.update(authors(folder / (paper + ".xml")))
-    session, tokenizer = load_candidate(model)
-    counts = Counter()
     for accession in accessions:
         path = folder / (accession + ".xml")
         root = ET.parse(path).getroot()
@@ -62,8 +60,15 @@ def main(folder, previous, model, accessions, prior_accessions=(), controls=None
             text = "\n".join(" ".join("".join(p.itertext()).split()) for p in node.iter("p"))
             if not text.strip():
                 raise ValueError("Empty abstract")
-            for variant, label in decisions(session, tokenizer, text, lang):
-                counts[lang,variant,label] += 1
+            yield accession, lang, text
+
+
+def main(folder, previous, model, accessions, prior_accessions=(), controls=None):
+    session, tokenizer = load_candidate(model)
+    counts = Counter()
+    for _, lang, text in published_abstracts(folder, previous, accessions, prior_accessions):
+        for variant, label in decisions(session, tokenizer, text, lang):
+            counts[lang,variant,label] += 1
     for lang,variant in (("zh","A"),("en","A"),("en","B")):
         print(lang,variant,"N",len(accessions),"AI HUMAN abstain",*(counts[lang,variant,k] for k in ("AI","HUMAN","abstain")))
     if controls is not None:

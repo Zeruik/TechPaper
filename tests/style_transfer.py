@@ -1,0 +1,96 @@
+"""Compare topic-paired style models on journal- and byline-disjoint academic folds."""
+import argparse
+from collections import Counter, defaultdict
+from pathlib import Path
+import json
+
+from bilingual_holdout import source_texts
+from author_holdout import authors
+from journal_transfer import published_abstracts
+from generator_holdout import MODELS, TOPICS
+from paired_transfer import independent_folds
+from style_benchmark import fingerprint, fit, training_split
+
+
+def evaluate(papers, calibration, hc3, accessions, engineering=None, extra_folder=None, extra_ids=()):
+    rows = list(source_texts(papers))
+    folds = independent_folds(papers)
+    controls = list(published_abstracts(calibration, papers, accessions))
+    if bool(extra_folder) != bool(extra_ids):
+        raise ValueError("Supply both extra_folder and extra_ids")
+    extra = []
+    if extra_folder:
+        calibration_authors = set().union(*(authors(calibration/(pid+".xml")) for pid in accessions))
+        for pid in extra_ids:
+            if authors(extra_folder/(pid+".xml")) & calibration_authors:
+                raise ValueError("Extra byline overlaps calibration")
+        extra = list(published_abstracts(extra_folder, papers, extra_ids))
+    for lang in ("en", "zh"):
+        qa, _, seen = training_split(hc3, lang)
+        qa_score = fit(qa, lang)
+        cutoff_texts = [text for _, language, text in controls if language == lang]
+        keys = {fingerprint(text) for text in cutoff_texts}
+        groups = defaultdict(dict)
+        for paper, language, role, text in rows:
+            if language == lang:
+                key = fingerprint(text)
+                if key in keys or key in seen:
+                    raise ValueError("Repeated text across cohorts")
+                keys.add(key)
+                groups[paper][role] = text
+        if {fingerprint(t) for t in cutoff_texts} & seen or not cutoff_texts:
+            raise ValueError("Calibration overlap or missing controls")
+        counts = defaultdict(Counter)
+        academic_models = []
+        for test in folds:
+            pairs = [(next(t for r,t in g.items() if r != "generated"), g["generated"])
+                     for paper,g in groups.items() if paper not in test]
+            for variant, score in (("QA", qa_score), ("academic", fit(pairs, lang))):
+                threshold = max(score(t) for t in cutoff_texts)
+                if variant == "academic":
+                    academic_models.append((score, threshold))
+                for paper in test:
+                    for role, text in groups[paper].items():
+                        counts[variant, role]["AI" if score(text)>threshold else "abstain"] += 1
+        for (variant, role), group in sorted(counts.items()):
+            print(lang, variant, role, "AI / abstain", group["AI"], group["abstain"])
+        if extra:
+            votes = Counter()
+            qa_cutoff = max(qa_score(t) for t in cutoff_texts)
+            qa_alerts = 0
+            for _, language, text in extra:
+                if lang != language:
+                    continue
+                key = fingerprint(text)
+                if key in keys or key in seen:
+                    raise ValueError("Repeated external test text")
+                keys.add(key)
+                qa_alerts += qa_score(text) > qa_cutoff
+                votes[sum(score(text)>threshold for score,threshold in academic_models)] += 1
+            print(lang,"external published QA AI / abstain",qa_alerts,sum(votes.values())-qa_alerts)
+            print(lang,"external published unanimous AI / abstain",votes[len(folds)],sum(votes.values())-votes[len(folds)])
+            print(lang,"external number of academic folds flagging each abstract",sorted(votes.items()))
+        if engineering:
+            for name,digest in MODELS.items():
+                flagged = 0
+                for i in range(len(TOPICS)):
+                    row = json.loads((engineering/f"{digest[:12]}-{i}-{lang}.json").read_bytes())
+                    if (row["model"],row["digest"],row["language"],row["topic"],row["finished"]) != (name,digest,lang,i,"stop"):
+                        raise ValueError("Engineering control mismatch")
+                    text = row["text"].strip()
+                    if not text or fingerprint(text) in keys | seen:
+                        raise ValueError("Empty or duplicate engineering control")
+                    keys.add(fingerprint(text))
+                    flagged += all(score(text)>threshold for score,threshold in academic_models)
+                print(lang, name, "academic unanimous AI / abstain", flagged, len(TOPICS)-flagged)
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description=__doc__)
+    for name in ("papers","calibration","hc3"):
+        parser.add_argument(name,type=Path)
+    parser.add_argument("accessions",nargs="+")
+    parser.add_argument("--engineering",type=Path)
+    parser.add_argument("--extra-folder",type=Path)
+    parser.add_argument("--extra-ids",nargs="+")
+    evaluate(**vars(parser.parse_args()))

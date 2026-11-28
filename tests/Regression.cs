@@ -29,6 +29,20 @@ class Regression {
         var rels=Manuscript.Parse(parts["_rels/.rels"]);
         rels.Root.Add(new XElement(rels.Root.Name.Namespace+"Relationship",new XAttribute("Id","rPrivateFixture"),new XAttribute("Type","http://schemas.openxmlformats.org/officeDocument/2006/relationships/custom-properties"),new XAttribute("Target","docProps/custom.xml")));
         var utf8=System.Text.Encoding.UTF8;
+        var header=Manuscript.Parse(parts["word/header1.xml"]);
+        var hp=header.Descendants(w+"p").First();
+        Func<string,XElement> fieldMark=kind=>new XElement(w+"r",new XElement(w+"fldChar",new XAttribute(w+"fldCharType",kind)));
+        Func<string,XElement> instruction=value=>new XElement(w+"r",new XElement(w+"instrText",value));
+        hp.Add(new XElement(w+"fldSimple",new XAttribute(w+"instr"," FILENAME \\p "),
+                   new XElement(w+"r",new XElement(w+"t","SYNTHETIC_PATH"))),
+               fieldMark("begin"),instruction(" laSt"),instruction("SavedBy "),fieldMark("separate"),
+               new XElement(w+"r",new XElement(w+"t","SYNTHETIC_EDITOR")),fieldMark("end"),
+               new XElement(w+"fldSimple",new XAttribute(w+"instr","PAGE")));
+        var footer=Manuscript.Parse(parts["word/footer1.xml"]);
+        footer.Descendants(w+"p").First().Add(fieldMark("begin"),instruction("IF "),fieldMark("begin"),
+               instruction("AUTHOR"),fieldMark("separate"),fieldMark("end"),fieldMark("separate"),fieldMark("end"));
+        parts["word/header1.xml"]=utf8.GetBytes(header.ToString());
+        parts["word/footer1.xml"]=utf8.GetBytes(footer.ToString());
         parts["word/document.xml"]=utf8.GetBytes(body.ToString());
         parts["word/comments.xml"]=utf8.GetBytes(comments.ToString());
         parts["[Content_Types].xml"]=utf8.GetBytes(types.ToString());
@@ -44,9 +58,15 @@ class Regression {
             foreach(bool extra in new[]{false,true}){
                 string preview=(string)manuscriptType.GetMethod("PrivacyPreview",flags).Invoke(doc,new object[]{extra});
                 Check(preview.Contains("FixtureOwner") && preview.Contains("直接隐藏的纯文本片段：1；") && preview.Contains(extra?"将删除批注":"保留批注"),"privacy preview matches selected mode");
+                Check(preview.Contains("word/header1.xml · 2") && preview.Contains("word/footer1.xml · 1") &&
+                    !preview.Contains("SYNTHETIC_EDITOR") && !preview.Contains("SYNTHETIC_PATH"),
+                    "preview counts retained identity fields without displaying cached values");
                 string output=Path.Combine(folder,extra?"extra.docx":"default.docx");
                 manuscriptType.GetMethod("Export",flags).Invoke(doc,new object[]{output,new HashSet<int>(),true,extra});
                 var result=Read(output);
+                Check(result["word/header1.xml"].SequenceEqual(parts["word/header1.xml"]) &&
+                    result["word/footer1.xml"].SequenceEqual(parts["word/footer1.xml"]),
+                    "identity field codes, cached results and unrelated page number preserved");
                 Check(!result.ContainsKey("docProps/custom.xml") && !utf8.GetString(result["_rels/.rels"]).Contains("docProps/custom.xml") && !utf8.GetString(result["[Content_Types].xml"]).Contains("docProps/custom.xml"),"custom property and package references removed");
                 var revised=Manuscript.Parse(result["word/document.xml"]);
                 Check(revised.Descendants(w+"ins").Any(n=>n.Value.Contains("hidden revision")) && !revised.Root.Value.Contains("hidden ordinary"),"hidden revision retained and ordinary hidden text removed");

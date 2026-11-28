@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
+using System.Text;
 using System.Text.RegularExpressions;
 using System.Xml;
 using System.Xml.Linq;
@@ -181,6 +182,29 @@ internal sealed class Manuscript {
         return Uri.UnescapeDataString(new Uri(new Uri("http://local/"+owner),target).AbsolutePath.TrimStart('/'));
     }
     string privacyDetails;
+    static readonly Regex identityField=new Regex(
+        @"^\s*(?:AUTHOR|LASTSAVEDBY|USERNAME|USERINITIALS|USERADDRESS|FILENAME|DOCPROPERTY)(?=\s|\\|$)",
+        RegexOptions.IgnoreCase|RegexOptions.CultureInvariant);
+    static int CountIdentityFields(XDocument part) {
+        int count=0;
+        var codes=new Stack<StringBuilder>();
+        foreach(var node in part.Descendants()){
+            if(node.Name==W+"fldSimple"){
+                if(identityField.IsMatch((string)node.Attribute(W+"instr")??""))count++;
+            }else if(node.Name==W+"fldChar"){
+                string kind=(string)node.Attribute(W+"fldCharType");
+                if(kind=="begin")codes.Push(new StringBuilder());
+                else if(codes.Count>0 && (kind=="end" || kind=="separate")){
+                    var code=codes.Pop();
+                    if(code!=null && identityField.IsMatch(code.ToString()))count++;
+                    if(kind=="separate")codes.Push(null); // Cached result follows.
+                }
+            }else if(node.Name==W+"instrText" && codes.Count>0 && codes.Peek()!=null){
+                codes.Peek().Append(node.Value);
+            }
+        }
+        return count;
+    }
     string GetPrivacyDetails() {
         string[] props={"docProps/core.xml","docProps/app.xml","docProps/custom.xml"};
         var rows=new List<string>();
@@ -190,8 +214,19 @@ internal sealed class Manuscript {
             var names=nodes.Select(n=>(string)n.Attribute("name")??n.Name.LocalName).ToArray();
             if(names.Length>0)rows.Add(key+" · "+String.Join(", ",names));
         }
-        int hidden=parts.Where(k=>k.Key.StartsWith("word/") && k.Key.EndsWith(".xml") && !PersonalPart(k.Key,true)).Sum(k=>Parse(k.Value).Descendants().Count(RemovableHiddenRun));
+        int hidden=0;
+        var retained=new List<string>();
+        foreach(var part in parts.Where(k=>k.Key.StartsWith("word/") && k.Key.EndsWith(".xml") && !PersonalPart(k.Key,true))){
+            var xml=Parse(part.Value);
+            hidden+=xml.Descendants().Count(RemovableHiddenRun);
+            int count=CountIdentityFields(xml);
+            if(count>0)retained.Add(part.Key+" · "+count);
+        }
         rows.Add("直接隐藏的纯文本片段："+hidden+"；缩略图："+parts.Keys.Count(k=>k.StartsWith("docProps/thumbnail.")));
+        if(retained.Count>0){
+            rows.Add("以下位置含姓名、文件名或文档属性域。清理会保留域结构，已显示的姓名或路径可能仍在副本中，请在分享前核对：");
+            rows.AddRange(retained);
+        }
         return String.Join("\r\n",rows);
     }
     internal string PrivacyPreview(bool comments=false) {

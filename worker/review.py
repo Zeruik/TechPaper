@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import posixpath
+from urllib.parse import unquote
 import re
 import sys
 import tempfile
@@ -52,8 +53,13 @@ def rels(z, part):
     path=posixpath.join(posixpath.dirname(part),"_rels",posixpath.basename(part)+".rels")
     if path not in z.namelist():
         return {}
-    return {n.get("Id"):posixpath.normpath(posixpath.join(posixpath.dirname(part),n.get("Target",""))).lstrip("/")
-            for n in ET.fromstring(z.read(path)) if n.get("TargetMode")!="External"}
+    targets = {}
+    for node in ET.fromstring(z.read(path)):
+        if node.get("TargetMode") == "External":
+            continue
+        target = posixpath.normpath(posixpath.join(posixpath.dirname(part),node.get("Target",""))).lstrip("/")
+        targets[node.get("Id")] = target if target in z.NameToInfo else unquote(target)
+    return targets
 
 
 def poster_gutter(rows, width):
@@ -169,9 +175,16 @@ def office(path):
             part="ppt/presentation.xml"
             deck=ET.fromstring(z.read(part))
             lookup=rels(z,part)
-            for index,slide in enumerate(deck.findall(".//"+P+"sldId"),1):
-                target=lookup[slide.get(R+"id")]
-                root=ET.fromstring(z.read(target))
+            for index,slide in enumerate(deck.findall(P+"sldIdLst/"+P+"sldId"),1):
+                target=lookup.get(slide.get(R+"id"))
+                if target not in z.NameToInfo:
+                    yield f"幻灯片 {index}", "", "幻灯片部件缺失，已跳过", None
+                    continue
+                try:
+                    root=ET.fromstring(z.read(target))
+                except (ET.ParseError, zipfile.BadZipFile):
+                    yield f"幻灯片 {index}", "", "幻灯片部件损坏，已跳过", None
+                    continue
                 yield from visible_slide_rows(z,root,target,index)
         else:
             style_root = ET.fromstring(z.read("word/styles.xml")) if "word/styles.xml" in z.namelist() else None

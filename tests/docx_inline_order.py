@@ -3,7 +3,7 @@ import argparse
 from pathlib import Path
 
 
-def make(source, poster):
+def make(source, poster, image_name=None):
     from docx import Document
     from docx.shared import Inches
     document = Document()
@@ -15,7 +15,33 @@ def make(source, poster):
     paragraph.add_run("After figure.")
     cells[1].text = "Second cell."
     document.add_paragraph("After table.")
-    document.save(source)
+    if image_name is None:
+        document.save(source)
+        return
+    from io import BytesIO
+    from urllib.parse import quote
+    from xml.etree import ElementTree as ET
+    from zipfile import ZipFile
+    original = BytesIO()
+    document.save(original)
+    picture = "docProps/合成 展板.png"
+    with ZipFile(original) as src, ZipFile(source, "x") as dest:
+        image, = [name for name in src.namelist() if name.startswith("word/media/")]
+        for name in src.namelist():
+            if name == "docProps/thumbnail.jpeg":
+                continue
+            data = src.read(name)
+            if name == image:
+                name = quote(picture) if image_name == "encoded" else picture
+            if name in ("_rels/.rels", "word/_rels/document.xml.rels"):
+                root = ET.fromstring(data)
+                for node in root:
+                    if node.get("Type").endswith("/thumbnail"):
+                        node.set("Target", quote(picture))
+                    elif node.get("Type").endswith("/image"):
+                        node.set("Target", "../"+quote(picture))
+                data = ET.tostring(root, encoding="utf-8")
+            dest.writestr(name, data)
 
 
 def verify(report):
@@ -41,10 +67,11 @@ if __name__ == "__main__":
     modes.add_argument("--make", type=Path)
     modes.add_argument("--verify", type=Path)
     parser.add_argument("--poster", type=Path)
+    parser.add_argument("--image-name", choices=("literal","encoded"), help="Use shared picture and encoded relationship target")
     args = parser.parse_args()
     if args.make:
         if not args.poster:
             parser.error("Supply the synthetic visible_ocr.py poster with --poster")
-        make(args.make, args.poster)
+        make(args.make, args.poster, args.image_name)
     else:
         verify(args.verify)

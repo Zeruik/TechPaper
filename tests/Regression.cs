@@ -203,7 +203,10 @@ class Regression {
     static void Main(string[] args) {
         if(args.Length==3 && args[0]=="--installed-privacy"){
             var assembly=System.Reflection.Assembly.LoadFrom(Path.GetFullPath(args[1]));
-            CheckPrivacy(args[2],assembly.GetType("TechPaper.Manuscript",true));
+            var installedManuscript=assembly.GetType("TechPaper.Manuscript",true);
+            CheckPrivacy(args[2],installedManuscript);
+            CheckPrivacy(args[2],installedManuscript,true);
+            CheckPrivacy(args[2],installedManuscript,true,true);
             Console.WriteLine("PASS installed privacy preview and both exports");
             return;
         }

@@ -26,6 +26,12 @@ class Regression {
             "<w:r><w:rPr><w:vanish w:val='0'/></w:rPr><w:t> and visible override</w:t></w:r></w:p>");
         body.Root.Element(w+"body").AddFirst(para);
         body.Root.Element(w+"body").AddFirst(XElement.Parse("<w:p xmlns:w='"+w+"'><w:r><w:rPr><w:vanish/></w:rPr><w:t>HIDDEN_DIRECT</w:t></w:r></w:p>"));
+        para.Add(XElement.Parse("<w:fldSimple xmlns:w='"+w+"' w:instr='REF sample'><w:r><w:t>HIDDEN_FIELD</w:t></w:r></w:fldSimple>"),
+            XElement.Parse("<w:r xmlns:w='"+w+"'><w:fldChar w:fldCharType='begin'/></w:r>"),
+            XElement.Parse("<w:r xmlns:w='"+w+"'><w:instrText> REF sample </w:instrText></w:r>"),
+            XElement.Parse("<w:r xmlns:w='"+w+"'><w:fldChar w:fldCharType='separate'/></w:r>"),
+            XElement.Parse("<w:r xmlns:w='"+w+"'><w:t>HIDDEN_COMPLEX_FIELD</w:t></w:r>"),
+            XElement.Parse("<w:r xmlns:w='"+w+"'><w:fldChar w:fldCharType='end'/></w:r>"));
         parts["word/document.xml"]=System.Text.Encoding.UTF8.GetBytes(body.ToString());
         parts["word/styles.xml"]=System.Text.Encoding.UTF8.GetBytes(styles.ToString());
         string input=Path.Combine("build",Guid.NewGuid()+".docx"),output=Path.Combine("build",Guid.NewGuid()+".docx");
@@ -38,6 +44,14 @@ class Regression {
                 "visible review text excludes direct and inherited hidden runs; both overrides respected");
             doc.Export(output,new HashSet<int>(),false);
             Check(Read(output)["word/document.xml"].SequenceEqual(parts["word/document.xml"]),"hidden runs preserved in ordinary copy");
+            File.Delete(output);
+            Check(doc.PrivacyPreview().Contains("将移除的隐藏纯文本片段：2；"),"preview counts direct and inherited hidden runs");
+            doc.Export(output,new HashSet<int>(),true);
+            var cleaned=Manuscript.Parse(Read(output)["word/document.xml"]);
+            string text=cleaned.Root.Value;
+            Check(!text.Contains("HIDDEN_DIRECT") && !text.Contains("HIDDEN_STYLE") && text.Contains("HIDDEN_FIELD") &&
+                text.Contains("HIDDEN_COMPLEX_FIELD") && new Manuscript(output).Items[0].Text==doc.Items[0].Text,
+                "clean copy excludes hidden plain text and retains both fields and visible overrides");
         }finally{File.Delete(input);File.Delete(output);}
     }
     static void CheckPrivacy(string source, Type manuscriptType) {
@@ -85,7 +99,7 @@ class Regression {
             var doc=open.Invoke(new object[]{input});
             foreach(bool extra in new[]{false,true}){
                 string preview=(string)manuscriptType.GetMethod("PrivacyPreview",flags).Invoke(doc,new object[]{extra});
-                Check(preview.Contains("FixtureOwner") && preview.Contains("直接隐藏的纯文本片段：1；") && preview.Contains(extra?"将删除批注":"保留批注"),"privacy preview matches selected mode");
+                Check(preview.Contains("FixtureOwner") && preview.Contains("将移除的隐藏纯文本片段：1；") && preview.Contains(extra?"将删除批注":"保留批注"),"privacy preview matches selected mode");
                 Check(preview.Contains("word/header1.xml · 2") && preview.Contains("word/footer1.xml · 1") &&
                     !preview.Contains("SYNTHETIC_EDITOR") && !preview.Contains("SYNTHETIC_PATH"),
                     "preview counts retained identity fields without displaying cached values");

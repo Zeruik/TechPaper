@@ -13,6 +13,7 @@ from bilingual_holdout import ARTICLES, LANG
 from calibration_benchmark import document_scores
 from generator_holdout import MODELS, TOPICS
 from multilingual_transfer import DIGESTS, verify_assets
+from title_controls import read_control
 
 
 def decisions(session, tokenizer, text, lang):
@@ -63,14 +64,21 @@ def published_abstracts(folder, previous, accessions, prior_accessions=()):
             yield accession, lang, text
 
 
-def main(folder, previous, model, accessions, prior_accessions=(), controls=None):
+def main(folder, previous, model, accessions, prior_accessions=(), controls=None, title_controls=None):
     session, tokenizer = load_candidate(model)
     counts = Counter()
-    for _, lang, text in published_abstracts(folder, previous, accessions, prior_accessions):
+    title_counts = Counter()
+    for paper, lang, text in published_abstracts(folder, previous, accessions, prior_accessions):
         for variant, label in decisions(session, tokenizer, text, lang):
             counts[lang,variant,label] += 1
+        if title_controls:
+            draft=read_control(title_controls,paper,lang)
+            for variant,label in decisions(session,tokenizer,draft,lang):
+                title_counts[lang,variant,label] += 1
     for lang,variant in (("zh","A"),("en","A"),("en","B")):
         print(lang,variant,"N",len(accessions),"AI HUMAN abstain",*(counts[lang,variant,k] for k in ("AI","HUMAN","abstain")))
+        if title_controls:
+            print(lang,variant,"generated AI HUMAN abstain",*(title_counts[lang,variant,k] for k in ("AI","HUMAN","abstain")))
     if controls is not None:
         for name, digest in MODELS.items():
             counts = Counter()
@@ -92,6 +100,7 @@ if __name__ == "__main__":
     for name in ("folder","previous","model"):
         parser.add_argument(name,type=Path)
     parser.add_argument("accessions",nargs="+")
+    parser.add_argument("--title-controls",type=Path)
     parser.add_argument("--controls", type=Path, help="Score existing paired local engineering controls")
     parser.add_argument("--prior-accessions", nargs="+", default=(),
                         help="Also exclude bylines from previously tested articles in folder")

@@ -3,6 +3,7 @@ import argparse
 from collections import Counter, defaultdict
 from pathlib import Path
 import json
+import re
 
 from bilingual_holdout import source_texts
 from author_holdout import authors
@@ -10,14 +11,17 @@ from journal_transfer import published_abstracts
 from generator_holdout import MODELS, TOPICS
 from paired_transfer import independent_folds
 from style_benchmark import fingerprint, fit, training_split
+from title_controls import read_control
 
 
-def evaluate(papers, calibration, hc3, accessions, engineering=None, extra_folder=None, extra_ids=()):
+def evaluate(papers, calibration, hc3, accessions, engineering=None, extra_folder=None, extra_ids=(), title_controls=None):
     rows = list(source_texts(papers))
     folds = independent_folds(papers)
     controls = list(published_abstracts(calibration, papers, accessions))
     if bool(extra_folder) != bool(extra_ids):
         raise ValueError("Supply both extra_folder and extra_ids")
+    if title_controls and not extra_folder:
+        raise ValueError("Title controls require the matching external papers")
     extra = []
     if extra_folder:
         calibration_authors = set().union(*(authors(calibration/(pid+".xml")) for pid in accessions))
@@ -58,7 +62,8 @@ def evaluate(papers, calibration, hc3, accessions, engineering=None, extra_folde
             votes = Counter()
             qa_cutoff = max(qa_score(t) for t in cutoff_texts)
             qa_alerts = 0
-            for _, language, text in extra:
+            generated = Counter()
+            for paper, language, text in extra:
                 if lang != language:
                     continue
                 key = fingerprint(text)
@@ -67,9 +72,29 @@ def evaluate(papers, calibration, hc3, accessions, engineering=None, extra_folde
                 keys.add(key)
                 qa_alerts += qa_score(text) > qa_cutoff
                 votes[sum(score(text)>threshold for score,threshold in academic_models)] += 1
+                if title_controls:
+                    draft=read_control(title_controls,paper,lang)
+                    if not draft or fingerprint(draft) in keys or fingerprint(draft) in seen:
+                        raise ValueError("Empty or duplicate title control")
+                    keys.add(fingerprint(draft))
+                    generated["QA"] += qa_score(draft)>qa_cutoff
+                    generated["academic"] += all(score(draft)>threshold for score,threshold in academic_models)
+                    generated["N"] += 1
+                    units = r"[\u3400-\u9fff]" if lang=="zh" else r"\S+"
+                    ends = [[m.end() for m in re.finditer(units,s)] for s in (text,draft)]
+                    length = min(map(len,ends))
+                    if not length:
+                        raise ValueError("Empty length control")
+                    for role,s,offsets in zip(("published","generated"),(text,draft),ends):
+                        excerpt=s[:offsets[length-1]]
+                        generated[role+"Prefix"] += all(score(excerpt)>threshold for score,threshold in academic_models)
             print(lang,"external published QA AI / abstain",qa_alerts,sum(votes.values())-qa_alerts)
             print(lang,"external published unanimous AI / abstain",votes[len(folds)],sum(votes.values())-votes[len(folds)])
             print(lang,"external number of academic folds flagging each abstract",sorted(votes.items()))
+            if title_controls:
+                print(lang,"same-title generated QA / academic / total",generated["QA"],generated["academic"],generated["N"])
+                print(lang,"matched prefix academic published / generated / pairs",
+                      generated["publishedPrefix"],generated["generatedPrefix"],generated["N"])
         if engineering:
             for name,digest in MODELS.items():
                 flagged = 0
@@ -93,4 +118,5 @@ if __name__ == "__main__":
     parser.add_argument("--engineering",type=Path)
     parser.add_argument("--extra-folder",type=Path)
     parser.add_argument("--extra-ids",nargs="+")
+    parser.add_argument("--title-controls",type=Path)
     evaluate(**vars(parser.parse_args()))

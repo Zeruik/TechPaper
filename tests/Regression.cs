@@ -148,6 +148,8 @@ class Regression {
                 Check(rejected,"protected scientific detail: "+example[0]);
             }
             foreach (var safe in new[] {
+                new[]{"仅纳入浓度 ≥ 5 nM 的样本。","仅纳入浓度 >= 5 nM 的样本。"},
+                new[]{"Samples with p != 0.05 were retained.","We retained samples with p ≠ 0.05."},
                 new[]{"差异与温度有关。","差异与温度相关。"},
                 new[]{"The shift was associated with temperature.","The shift was related to temperature."},
                 new[]{"Temperature caused the shift.","Temperature led to the shift."},
@@ -168,6 +170,10 @@ class Regression {
                 Check(invalidModel,"reject empty or nonlocal selector");
             }
             var changesOfMeaning = new[] {
+                new[]{"纳入条件为 p < 0.05[1]。","纳入条件为 p <= 0.05[1]。"},
+                new[]{"The cutoff was p = 0.05 [1].","The cutoff was p ≠ 0.05 [1]."},
+                new[]{"至少 3 次重复[2]。","至多 3 次重复[2]。"},
+                new[]{"The sample contained at most 5 mL.","The sample contained at least 5 mL."},
                 new[]{"我们重复了测量，以便能够判断差异是否与温度有关。现有数据不足以排除抽样误差。","为检验观测差异是否受温度影响，我们进行了重复测量；然而，现有数据尚不足以排除抽样误差的干扰。"},
                 new[]{"差异与温度有关。","差异由温度导致。"},
                 new[]{"Temperature was associated with drift.","Temperature caused drift."},

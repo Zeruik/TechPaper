@@ -43,12 +43,13 @@ internal static class Services {
         const string citation = @"[\[［【]\s*\d+(?:\s*[,，、;；\-–—]\s*\d+)*\s*[\]］】]";
         const string qualifier = @"不能|无法|尚未|并未|未能|未见|没有|并非|不显著|不确定|可能|仅限|\b(?i:not|no|never|cannot|may|might|only)\b";
         const string group = @"(?:样品|试样|材料|样本|试剂|方案|条件)\s*[甲乙丙丁A-Z](?![A-Za-z])|(?:实验|对照|处理|干预|基线|安慰剂|空白|观察|治疗)组|(?:组\s*[A-Z甲乙丙丁]|[A-Z甲乙丙丁]\s*组)|\b(?i:(?:group|arm)\s+[a-z0-9]+|control|treatment|placebo|intervention)\b";
-        const string direction = @"高于|低于|小于|大于|超过|优于|劣于|上升|下降|增加|减少|升高|降低|正相关|负相关|提示|证明|证实|必然|显著|未|不|无|[<>≤≥]|\b(?i:higher|lower|greater|less|more|increase[d]?|decrease[d]?|suggests?|proves?|confirms?|significant(?:ly)?|must)\b";
+        const string direction = @"高于|低于|小于|大于|超过|优于|劣于|上升|下降|增加|减少|升高|降低|正相关|负相关|提示|证明|证实|必然|显著|未|不|无|\b(?i:higher|lower|greater|less|more|increase[d]?|decrease[d]?|suggests?|proves?|confirms?|significant(?:ly)?|must)\b";
         const string relation = @"纳入|排除|支持|推翻|正向|负向|反向|(?:照射|给药|处理|干预|暴露|实验|试验|治疗|加热|冷却)[前后]|" +
             @"\b(?i:before|after|prior to|following|include[ds]?|exclude[ds]?|above|below|exceed(?:s|ed)?|approach(?:es|ed)?|rise|rose|risen|fall|fell|fallen|could|likely|unlikely|rule[ds]? out|establish(?:es|ed)?)\b";
+        const string comparison = @"(?<comparison><=|>=|!=|[<>≤≥=≠])|至少|至多|最多|最少|\b(?i:at least|at most)\b";
         const string association = @"(?<association>相关|关联|有关|\b(?i:associat(?:ed|ion)|correlat(?:ed|es|ion)|linked to|related to)\b)";
         const string causation = @"(?<causation>导致|造成|引起|影响|\b(?i:caus(?:e|es|ed)|affect(?:s|ed)?|influenc(?:e|es|ed)|led to|leads? to)\b)";
-        string anchors = "(?:"+citation+"|"+measurement+"|"+qualifier+"|"+group+"|"+relation+"|"+direction+"|"+association+"|"+causation+")";
+        string anchors = "(?:"+citation+"|"+measurement+"|"+qualifier+"|"+group+"|"+relation+"|"+direction+"|"+comparison+"|"+association+"|"+causation+")";
         if (String.IsNullOrWhiteSpace(updated) || updated.Contains("\n") || updated.Contains("\r") ||
             updated.Length > text.Length * 2 + 24 ||
             !ProtectedTokens(text,measurement).SequenceEqual(ProtectedTokens(updated,measurement)) ||
@@ -58,7 +59,8 @@ internal static class Services {
     }
     static IEnumerable<string> ProtectedTokens(string text,string pattern) {
         return Regex.Matches(text,pattern,RegexOptions.CultureInvariant).Cast<Match>()
-            .Select(m=>m.Groups["association"].Success ? "<association>" :
+            .Select(m=>m.Groups["comparison"].Success ? m.Value.Replace("<=","≤").Replace(">=","≥").Replace("!=","≠") :
+                       m.Groups["association"].Success ? "<association>" :
                        m.Groups["causation"].Success ? "<causation>" : Regex.Replace(m.Value,@"\s+",""));
     }
     internal static string[] ListLocalModels() {

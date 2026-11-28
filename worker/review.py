@@ -302,21 +302,51 @@ class Corpus:
     width=16
     def __init__(self,path):
         self.name=path.name if path else None
-        self.text=path.read_text(encoding="utf-8-sig") if path else ""
+        self.text=path.read_bytes().decode("utf-8-sig") if path else ""
         self.index={}
+        self.repeated=set()
         for i in range(len(self.text)-self.width+1):
             key=self.text[i:i+self.width]
-            self.index.setdefault(key,i)
-    def match(self,text):
-        if not self.name:return "未选择语料"
-        for i in range(len(text)-self.width+1):
-            key=text[i:i+self.width]
             if key in self.index:
-                j=self.index[key];length=self.width
-                while i+length<len(text) and j+length<len(self.text) and text[i+length]==self.text[j+length]:
-                    length+=1
-                return f"{self.name} · 字符 {j}–{j+length} · {text[i:i+length]}"
-        return "未命中连续 16 字符"
+                self.repeated.add(key)
+            else:
+                self.index[key] = i
+
+    def spans(self,text):
+        i = 0
+        while i <= len(text)-self.width:
+            key=text[i:i+self.width]
+            if key not in self.index:
+                i += 1
+                continue
+            j = self.index[key]
+            length = self.width
+            while i+length<len(text) and j+length<len(self.text) and text[i+length]==self.text[j+length]:
+                length += 1
+            if key in self.repeated and i+length<len(text) and text[i:i+length+1] in self.text:
+                # Repeated seed. A matching prefix implies every shorter prefix matches.
+                length += 1
+                upper = min(len(text)-i, len(self.text))
+                while length < upper:
+                    mid = (length+upper+1)//2
+                    if text[i:i+mid] in self.text:
+                        length = mid
+                    else:
+                        upper = mid-1
+                j = self.text.index(text[i:i+length])
+            yield i, j, length
+            i += length
+
+    def match_lines(self,text,offset):
+        if not self.name:
+            yield "未选择语料"
+            return
+        found = False
+        for i, j, length in self.spans(text):
+            found = True
+            yield f"{self.name} · 语料字符 {j}–{j+length} · 段内字符 {offset+i}–{offset+i+length} · {text[i:i+length]}"
+        if not found:
+            yield "未命中连续 16 字符"
 
 
 def report(path,dest,corpus_path=None):
@@ -342,7 +372,8 @@ def report(path,dest,corpus_path=None):
                     counts[label]+=1
                     counts["total"]+=1
                     score="" if prob is None else f" · OCR {prob:.2f}"
-                    out.write(f"<article id='p{n}s{m.start()}'><small>{esc(loc)} · 字符 {m.start()}–{m.end()} · {esc(kind)}{score}</small><div><b>写作信号　{label} · {confidence}</b>　{esc(why)}<br><mark class='{label}'>{esc(sentence)}</mark></div><aside><b>本地语料</b><br>{esc(corpus.match(sentence))}</aside></article>")
+                    sources = "<br>".join(esc(line) for line in corpus.match_lines(sentence,m.start()))
+                    out.write(f"<article id='p{n}s{m.start()}'><small>{esc(loc)} · 字符 {m.start()}–{m.end()} · {esc(kind)}{score}</small><div><b>写作信号　{label} · {confidence}</b>　{esc(why)}<br><mark class='{label}'>{esc(sentence)}</mark></div><aside><b>本地语料</b><br>{sources}</aside></article>")
             total=counts["total"];assigned=sum(counts[k] for k in ("AI","MIX","HUMAN"))
             summary=f"共 {total} 个非空片段，分类 {assigned}（{assigned/max(total,1):.1%}），弃答 {counts['未判断']}，低置信未分析 {counts['未分析']}，空白/跳过/失败位置 {counts['skips']}。"
             details=" · ".join(f"{k} {counts[k]}" for k in ("AI","MIX","HUMAN"))

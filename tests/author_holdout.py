@@ -20,7 +20,9 @@ def normalized(value):
 def authors(path):
     root = ElementTree.parse(path)
     identities = set()
-    contributors = root.findall("./front/article-meta/contrib-group/contrib[@contrib-type='author']")
+    contributors = [person for group in root.findall("./front/article-meta/contrib-group")
+                    for person in group.findall("contrib")
+                    if person.get("contrib-type", group.get("content-type")) == "author"]
     if not contributors:
         raise ValueError("Missing byline in " + path.stem)
     for contributor in contributors:

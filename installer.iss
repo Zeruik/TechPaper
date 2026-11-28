@@ -1,7 +1,7 @@
 [Setup]
 AppId={{742CF026-B6B9-41A0-B684-AC7E6547A689}
 AppName=TechPaper
-AppVersion=0.9.0-preview.23
+AppVersion=0.9.0-preview.24
 AppPublisher=TechPaper contributors
 AppPublisherURL=https://github.com/Zeruik/TechPaper
 DefaultDirName={localappdata}\Programs\TechPaper
@@ -13,7 +13,7 @@ LicenseFile=docs\TERMS.txt
 SetupIconFile=assets\TechPaper.ico
 UninstallDisplayIcon={app}\TechPaper.exe
 OutputDir=release
-OutputBaseFilename=TechPaper-Setup-0.9.0-preview.23
+OutputBaseFilename=TechPaper-Setup-0.9.0-preview.24
 ArchitecturesAllowed=x64compatible
 WizardStyle=modern
 Compression=lzma2
@@ -29,6 +29,7 @@ Source: "README.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "LICENSE"; DestDir: "{app}"; Flags: ignoreversion
 Source: "docs\TERMS.txt"; DestDir: "{app}\docs"; Flags: ignoreversion
 Source: "docs\RESEARCH.md"; DestDir: "{app}\docs"; Flags: ignoreversion
+Source: "docs\EDITORIAL-PROMPT.zh-CN.md"; DestDir: "{app}\docs"; Flags: ignoreversion
 Source: "docs\VALIDATION.md"; DestDir: "{app}\docs"; Flags: ignoreversion
 Source: "assets\logo.png"; DestDir: "{app}\assets"; Flags: ignoreversion
 Source: "assets\workspace.png"; DestDir: "{app}\assets"; Flags: ignoreversion

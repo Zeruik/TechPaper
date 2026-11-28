@@ -31,5 +31,5 @@ if(!$Iscc){
 if(!$Iscc){throw 'Install Inno Setup 6 or pass -Iscc <path>'}
 & $Iscc /Qp installer.iss
 if($LASTEXITCODE){throw 'Installer compilation failed'}
-$file=Get-Item release/TechPaper-Setup-0.9.0-preview.14.exe
+$file=Get-Item release/TechPaper-Setup-0.9.0-preview.15.exe
 ("{0}  {1}" -f (Get-FileHash $file.FullName).Hash.ToLowerInvariant(),$file.Name) | Set-Content release/SHA256SUMS.txt -Encoding ascii

@@ -35,6 +35,30 @@ class InstalledPolish {
         var bytes=Encoding.UTF8.GetBytes(Json.Serialize(data));
         request.Response.ContentLength64=bytes.Length;request.Response.Close(bytes,false);
     }
+    static void CheckLocalPrivacy(Form form,HttpListener server,int paragraph){
+        var services=form.GetType().Assembly.GetType("TechPaper.Services");
+        var names=Task.Run(()=>(string[])services.GetMethod("ListLocalModels",BindingFlags.Static|BindingFlags.NonPublic).Invoke(null,null));
+        Reply(Receive(server,"/api/tags"),new{models=new object[]{
+            new{name="fixture:latest"},new{name="alias:latest",remote_model="remote-name"},
+            new{name="other:latest",remote_host="https://example.invalid"},new{name="example:cloud"}}});
+        Wait(()=>names.IsCompleted);
+        Require(names.Result.SequenceEqual(new[]{"fixture:latest"}),"remote entries in local selector");
+        var start=form.GetType().GetMethod("PolishBatch",Fields);
+        foreach(var info in new object[]{new{model_info=new{fixture=true},remote_model="alias"},
+                new{model_info=new{fixture=true},remote_host="https://example.invalid"},new{model_info=new{}}}){
+            var batch=(Task)start.Invoke(form,new object[]{new[]{paragraph},"fixture"});
+            var request=Receive(server,"/api/show");
+            Dictionary<string,object> body;
+            using(var reader=new StreamReader(request.Request.InputStream))
+                body=Json.Deserialize<Dictionary<string,object>>(reader.ReadToEnd());
+            Require(body.Count==1 && (string)body["model"]=="fixture:latest:local","unexpected document data in model preflight");
+            Reply(request,info);
+            Wait(()=>batch.IsCompleted);
+            Require(batch.IsFaulted && batch.Exception.GetBaseException() is InvalidOperationException,
+                "remote or unverified model accepted");
+        }
+        Console.WriteLine("PASS local selector and preflight: remote aliases and missing weights rejected before chat");
+    }
     static XDocument Body(ZipArchive zip){
         using(var stream=zip.GetEntry("word/document.xml").Open())return XDocument.Load(stream,LoadOptions.PreserveWhitespace);
     }
@@ -127,6 +151,7 @@ class InstalledPolish {
             var eligible=(int[])type.GetMethod("PolishIndices",Fields).Invoke(form,new object[]{true});
             Require(!eligible.Contains(confirmed) && eligible.Contains(cited),"selection changed");
             var start=type.GetMethod("PolishBatch",Fields);
+            CheckLocalPrivacy(form,server,cited);
             var stop=type.GetMethod("StopPolishing",Fields);
             var batch=(Task)start.Invoke(form,new object[]{new[]{cited},"fixture"});
             Reply(Receive(server,"/api/show"),new{model_info=new{fixture=true}});

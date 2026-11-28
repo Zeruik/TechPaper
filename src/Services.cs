@@ -145,6 +145,8 @@ internal static class Services {
             if(Regex.Matches(text,method).Count!=Regex.Matches(updated,method).Count)
                 throw new InvalidDataException("修订改变了重复试验、数据收集或数据规模的表述，请核对原文是否记载该方法。");
         }
+        if(IdentifierRecording.Matches(text).Count!=IdentifierRecording.Matches(updated).Count)
+            throw new InvalidDataException("修订改变了抄录编号的操作，请核对原文是否只要求核对编号。");
         if(SampleMassRoleChanged(text,updated) || SampleMassRoleChanged(updated,text))
             throw new InvalidDataException("样品的已知质量与实际测量对象可能发生互换，请核对实验方法。");
         ValidateCitationScope(text,updated);
@@ -170,6 +172,12 @@ internal static class Services {
         return sampleWithMass.Matches(original).Count>sampleWithMass.Matches(proposed).Count &&
             measuredMass.Matches(original).Count<measuredMass.Matches(proposed).Count;
     }
+    // Limit the check to recording an identifier. References to a recorder or logbook are not actions.
+    static readonly Regex IdentifierRecording=new Regex(
+        @"(?:记录(?!员|仪|表|本|簿|纸|中|显示)|抄录|登记)(?:了|下)?(?:[一二两三四五六七八九十0-9]+(?:个|支|份|台))?(?:(?:滤筒|探头|样品|样本|试样|仪器|设备|试件|传感器)的?)?(?:编号|序列号)|"+
+        @"(?:编号|序列号)(?:分别)?(?:被|已被|均已|已)?(?:抄录|登记|记入|录入)|"+
+        @"\b(?i:(?:record(?:ed|ing)?|log(?:ged|ging)?|transcrib(?:e|ed|ing))\s+(?:(?:the|both|their|two|probe|sample|filter)\s+){0,4}(?:serial\s+numbers?|identifiers?|ids?)|"+
+        @"(?:serial\s+numbers?|identifiers?|ids?)\s+(?:was|were)\s+(?:(?:checked|verified|compared)\s+and\s+)?(?:recorded|logged|transcribed))\b");
     static readonly string[] reportedMethods={
         @"(?:反复|多次|重复)(?:进行|开展)?(?:了)?(?:试验|实验)|\b(?i:repeat(?:ed|ing)? (?:the |these )?(?:experiments?|trials?)|(?:experiments?|trials?) (?:was|were) repeated)\b",
         @"(?:收集|采集)(?:了)?(?:大量(?:的)?|相关|原始)?数据|数据(?:的)?(?:收集|采集)|\b(?i:(?:collect(?:ed|ing)?|gather(?:ed|ing)?) (?:the |raw |a large amount of )?data|data (?:was|were) (?:collected|gathered)|data collection)\b",

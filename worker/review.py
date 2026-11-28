@@ -17,6 +17,7 @@ W = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
 A = "{http://schemas.openxmlformats.org/drawingml/2006/main}"
 R = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}"
 P = "{http://schemas.openxmlformats.org/presentationml/2006/main}"
+M = "{http://schemas.openxmlformats.org/officeDocument/2006/math}"
 ENGINE = "TechPaper Style Baseline 0.2"
 AI = re.compile(r"值得注意的是|不可忽视的是|综上所述|至关重要|深远影响|it is (?:important|worth) (?:to note|noting)|in conclusion|plays? a (?:crucial|pivotal) role",re.I)
 PERSONAL = re.compile(r"我(?:手工|亲自|记录|重测|重新|测量)|I (?:measured|counted|rechecked|recorded|repeated)\b",re.I)
@@ -123,9 +124,7 @@ def office(path):
                             hidden_ancestor = any(hidden_run(ancestor) for ancestor in stack if ancestor.tag == W+"r")
                             if not revision_depth and not hidden_ancestor:
                                 loc = f"{part.split('/')[-1]} / 段 {count}"
-                                t = "".join(docx_text(node))
-                                if t.strip():
-                                    yield loc,t,"DOCX 文字层；物理页码依赖排版",None
+                                yield from docx_review_rows(node, loc)
                                 yield from embedded(z,node,part,loc)
                             node.clear()
                         elif revision or (node.tag == W+"r" and hidden_run(node)):
@@ -138,8 +137,28 @@ def hidden_run(run):
     return any(f.get(W+"val", "true").lower() not in ("false", "0", "off") for f in flags)
 
 
+def docx_review_rows(node, loc):
+    reason = "DOCX 文字层；物理页码依赖排版"
+    skipped = "原生 Word 公式未纳入文字分析"
+    chunks = [[]]
+    for token in docx_text(node):
+        if token is None:
+            chunks.append([])
+        else:
+            chunks[-1].append(token)
+    for i, tokens in enumerate(chunks):
+        if i:
+            yield f"{loc} / 公式 {i}", "", skipped, None
+        chunk = "".join(tokens)
+        if chunk.strip():
+            segment = f"{loc} / 文字片段 {i+1}" if len(chunks) > 1 else loc
+            yield segment, chunk, reason, None
+
+
 def docx_text(node):
-    if node.tag == W+"t":
+    if node.tag == M+"oMath":
+        yield None
+    elif node.tag == W+"t":
         yield node.text or ""
     elif node.tag == W+"tab":
         yield "\t"
@@ -327,7 +346,7 @@ def report(path,dest,corpus_path=None):
             total=counts["total"];assigned=sum(counts[k] for k in ("AI","MIX","HUMAN"))
             summary=f"共 {total} 个非空片段，分类 {assigned}（{assigned/max(total,1):.1%}），弃答 {counts['未判断']}，低置信未分析 {counts['未分析']}，空白/跳过/失败位置 {counts['skips']}。"
             details=" · ".join(f"{k} {counts[k]}" for k in ("AI","MIX","HUMAN"))
-            out.write(f"<section id='coverage'><h2>覆盖统计</h2><p>{summary}</p>{details}<p>分母为成功提取的非空文本片段，跳过的图像和页面单列。无文字时不执行分类。</p></section></html>")
+            out.write(f"<section id='coverage'><h2>覆盖统计</h2><p>{summary}</p>{details}<p>分母为成功提取的非空文本片段，跳过的公式、图像和页面单列。无文字时不执行分类。</p></section></html>")
         # Windows rename refuses to replace an existing destination.
         if os.name=="nt":os.rename(name,dest)
         else:os.link(name,dest)

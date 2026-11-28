@@ -13,6 +13,20 @@ class Regression {
         using(var z=ZipFile.OpenRead(path))return z.Entries.ToDictionary(e=>e.FullName,e=>{using(var s=e.Open())using(var m=new MemoryStream()){s.CopyTo(m);return m.ToArray();}});
     }
     static void Main(string[] args) {
+        if(args.Length==3 && args[0]=="--office-math"){
+            var before=File.ReadAllBytes(args[1]);
+            var manuscript=new Manuscript(args[1]);
+            var edit=manuscript.Items.Single(p=>p.Editable);
+            Check(edit.Suggested=="We repeated the test to estimate drift.","expected edit outside Office Math");
+            manuscript.Export(args[2],new HashSet<int>{manuscript.Items.IndexOf(edit)},false);
+            var expected=Manuscript.Parse(Read(args[1])["word/document.xml"]);
+            expected.Descendants(Manuscript.W+"t").First().Value=edit.Suggested;
+            var actual=Manuscript.Parse(Read(args[2])["word/document.xml"]);
+            Check(XNode.DeepEquals(expected.Root,actual.Root),"all formula and revision XML retained after edit");
+            Check(new Manuscript(args[2]).Items.Any(p=>p.Text==edit.Suggested),"reopened edited Office Math fixture");
+            Check(before.SequenceEqual(File.ReadAllBytes(args[1])),"Office Math source intact");
+            return;
+        }
         if(args.Length==2){
             var longDoc=new Manuscript(args[0]);longDoc.Export(args[1],new HashSet<int>(),false);
             var copy=new Manuscript(args[1]);

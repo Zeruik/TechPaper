@@ -11,10 +11,10 @@ from tokenizers import Tokenizer
 from corpus_benchmark import documents
 
 
-def balanced_windows(encoded):
+def balanced_windows(encoded, max_length=512):
     fields = {"input_ids": encoded.ids, "attention_mask": encoded.attention_mask,
               "token_type_ids": encoded.type_ids}
-    if len(encoded.ids) <= 512:
+    if len(encoded.ids) <= max_length:
         yield fields
         return
     # Both pinned tokenizers wrap a single sequence with one prefix and one suffix.
@@ -22,7 +22,8 @@ def balanced_windows(encoded):
     if mask != [1] + [0] * (len(mask) - 2) + [1]:
         raise ValueError("Unexpected single-sequence special token layout")
     tokens = len(mask) - 2
-    num_windows = (tokens + 509) // 510
+    capacity = max_length - 2
+    num_windows = (tokens + capacity - 1) // capacity
     for i in range(num_windows):
         start = 1 + i * tokens // num_windows
         end = 1 + (i + 1) * tokens // num_windows

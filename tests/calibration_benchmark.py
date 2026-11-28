@@ -14,9 +14,9 @@ from corpus_benchmark import documents
 from onnx_benchmark import balanced_windows
 
 
-def document_scores(session, tokenizer, text, ai_index):
+def document_scores(session, tokenizer, text, ai_index, max_length=512):
     scores = []
-    for fields in balanced_windows(tokenizer.encode(text)):
+    for fields in balanced_windows(tokenizer.encode(text), max_length):
         feed = {item.name: np.asarray([fields[item.name]], dtype=np.int64)
                 for item in session.get_inputs()}
         logits = session.run(None, feed)[0][0].astype(np.float64)

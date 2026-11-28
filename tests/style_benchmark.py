@@ -49,16 +49,21 @@ def cutoff(scores):
     return sorted(scores)[ceil(.95*len(scores))-1]
 
 
+def training_split(hc3, lang):
+    pairs, held, seen = [], [], set()
+    for human, generated in training_rows(hc3, lang):
+        keys = {fingerprint(human), fingerprint(generated)}
+        if len(keys) != 2 or keys & seen:
+            continue
+        seen.update(keys)
+        (held if fingerprint(human)[0] % 5 == 0 else pairs).append((human, generated))
+    return pairs, held, seen
+
+
 def evaluate(hc3, papers, abstracts, archive):
     abstracts = list(source_texts(abstracts))
     for lang in ("en", "zh"):
-        pairs, held, seen = [], [], set()
-        for human, generated in training_rows(hc3, lang):
-            keys = {fingerprint(human), fingerprint(generated)}
-            if len(keys) != 2 or keys & seen:
-                continue
-            seen.update(keys)
-            (held if fingerprint(human)[0] % 5 == 0 else pairs).append((human, generated))
+        pairs, held, seen = training_split(hc3, lang)
         score = fit(pairs, lang)
         calibration = [[h for h, _ in held], [p["h"][lang] for p in papers]]
         if lang == "en":

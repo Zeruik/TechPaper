@@ -28,6 +28,23 @@ def main(worker):
         level(doc.add_paragraph(text), 8)
         level(doc.add_paragraph(text, style=custom), 9)
         doc.add_paragraph(text)
+        bibliography = doc.styles.add_style("Bibliography", WD_STYLE_TYPE.PARAGRAPH)
+        entry = doc.styles.add_style("Workshop proceedings", WD_STYLE_TYPE.PARAGRAPH)
+        entry.base_style = bibliography
+        doc.add_paragraph(text, style=bibliography)
+        doc.add_paragraph(text, style=entry)
+        ordinary = doc.styles.add_style("Bibliography discussion", WD_STYLE_TYPE.PARAGRAPH)
+        doc.add_paragraph(text, style=ordinary)
+        paragraph = doc.add_paragraph(text)._p
+        control = OxmlElement("w:sdt")
+        properties = OxmlElement("w:sdtPr")
+        properties.append(OxmlElement("w:bibliography"))
+        control.append(properties)
+        content = OxmlElement("w:sdtContent")
+        control.append(content)
+        paragraph.addprevious(control)
+        content.append(paragraph)
+        doc.add_paragraph(text)
         doc.save(folder / "sample.docx")
         corpus = folder / "source.txt"
         corpus.write_text(text, encoding="utf8")
@@ -35,13 +52,16 @@ def main(worker):
         subprocess.run([str(worker), str(folder/"sample.docx"), str(output), "--corpus", str(corpus)], check=True)
         tree = html.fromstring(output.read_bytes().decode("utf8"))
         rows = tree.xpath("//article[.//mark]")
-        assert [r.find(".//mark").get("class") for r in rows] == ["标题","标题","HUMAN","HUMAN"]
+        assert [r.find(".//mark").get("class") for r in rows] == [
+            "标题","标题","HUMAN","HUMAN","参考文献","参考文献","HUMAN","参考文献","HUMAN"
+        ]
         for i,row in enumerate(rows,1):
             assert row.find(".//mark").text == text
             assert f"段 {i} · 字符 0–{len(text)}" in row.find("small").text
             assert "source.txt" in row.find("aside").text_content()
         assert "另列大纲标题片段 2" in tree.text_content()
-        assert "共 2 个非空片段，分类 2（100.0%）" in tree.text_content()
+        assert "另列参考文献片段 3" in tree.text_content()
+        assert "共 4 个非空片段，分类 4（100.0%）" in tree.text_content()
         headings = Document()
         headings.add_heading(text, level=1)
         headings.save(folder / "headings.docx")

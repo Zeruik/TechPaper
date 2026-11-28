@@ -590,3 +590,9 @@ preview.18 最终安装版已复验上述 10 个高亮的顺序和位置。安�
 合成 DOCX 的四段使用完全相同的观测句。旧程序把四段全部分类为 HUMAN。修订后，依据继承自 Heading 2 的自定义段落样式、直接指定大纲级别这两段单列为标题，仍展示原文、原段位置和本地语料命中。直接覆写为正文级别及普通正文的两段继续进入分类。另一份只有标题的文档显示覆盖率不适用。此例检验分类范围；相同句子的 HUMAN 标签只说明匹配了实验性线索。
 
 识别范围为 DOCX 段落显式设置及标准样式部件中段落样式继承的大纲级别。仅用字号、粗体或文字模拟的标题仍按正文处理。Word 的 outlineLvl 取值 0 至 8 对应九级大纲，9 表示无大纲级别。[Microsoft 文档](https://learn.microsoft.com/en-us/dotnet/api/documentformat.openxml.wordprocessing.outlinelevel) · [合成回归](../tests/outline_report.py)
+
+## 开发版 · 参考文献条目与本地语料命中
+
+用相同观测句构造标题、正文和参考文献条目。改动前的分析程序把使用 Bibliography 样式及继承样式的两条参考文献计入 HUMAN。新版对九段合成输入分别得到两个标题、三个参考文献片段、四个正文分类。三条参考文献分别使用明确命名的段落样式、其派生样式以及 Word 参考文献内容控件。九条均保留原文、段落位置与本地语料命中。仅在样式名中包含 Bibliography 的普通讨论段、以及内容控件结束后的普通段落继续进入正文统计。
+
+此规则针对显式结构。手动粘贴成普通段落的书目仍需作者判读。未对私有稿或 GPTZero 进行检测。[微软对参考文献内容控件的定义](https://learn.microsoft.com/en-us/dotnet/api/documentformat.openxml.wordprocessing.sdtcontentbibliography) · [合成回归](../tests/outline_report.py)

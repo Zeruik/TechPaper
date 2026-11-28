@@ -21,6 +21,14 @@ M = "{http://schemas.openxmlformats.org/officeDocument/2006/math}"
 ENGINE = "TechPaper Style Baseline 0.2.1"
 VISIBLE_RENDER_NOTICE = "检测到不可见文字层；本页按可见渲染识别，隐藏数值不参与分类"
 OUTLINE_HEADING = "DOCX 大纲标题"
+BIBLIOGRAPHY = "DOCX 参考文献样式"
+BIBLIOGRAPHY_CONTROL = "DOCX 参考文献内容控件"
+DOCX_BODY = "DOCX 文字层；物理页码依赖排版"
+EXCLUDED = {
+    OUTLINE_HEADING: ("标题", "未分析", "按 Word 大纲级别排除，保留原文与语料比对"),
+    BIBLIOGRAPHY: ("参考文献", "未分析", "按 Word 参考文献段落样式排除，保留原文与语料比对"),
+    BIBLIOGRAPHY_CONTROL: ("参考文献", "未分析", "按 Word 参考文献内容控件排除，保留原文与语料比对"),
+}
 AI = re.compile(r"值得注意的是|不可忽视的是|综上所述|至关重要|深远影响|it is (?:important|worth) (?:to note|noting)|in conclusion|plays? a (?:crucial|pivotal) role",re.I)
 PERSONAL = re.compile(r"我(?:手工|亲自|记录|重测|重新|测量)|\bI (?:measured|counted|rechecked|recorded|repeated)\b",re.I)
 SENT = re.compile(r"[^。！？!?\n]+?(?:[。！？!?]+|\.(?=\s|$)|(?=\n|$))|[\s\S]",re.S)
@@ -163,8 +171,10 @@ def office(path):
                             hidden_ancestor = any(hidden_run(ancestor) for ancestor in stack if ancestor.tag == W+"r")
                             if not revision_depth and not hidden_ancestor:
                                 loc = f"{part.split('/')[-1]} / 段 {count}"
-                                heading = outline_heading(node, styles, default_style)
-                                yield from docx_review_rows(z, node, part, loc, heading)
+                                kind = paragraph_kind(node, styles, default_style)
+                                if kind==DOCX_BODY and any(a.tag==W+"sdt" and a.find(W+"sdtPr/"+W+"bibliography") is not None for a in stack):
+                                    kind=BIBLIOGRAPHY_CONTROL
+                                yield from docx_review_rows(z, node, part, loc, kind)
                             node.clear()
                         elif revision or (node.tag == W+"r" and hidden_run(node)):
                             node.clear()
@@ -176,24 +186,31 @@ def hidden_run(run):
     return any(f.get(W+"val", "true").lower() not in ("false", "0", "off") for f in flags)
 
 
-def outline_heading(node, styles, default_style):
+def paragraph_kind(node, styles, default_style):
     style = node.find(W+"pPr/"+W+"pStyle")
     key = style.get(W+"val") if style is not None else default_style
     seen = set()
+    outline = None
+    bibliography = False
     while node is not None:
         level = node.find(W+"pPr/"+W+"outlineLvl")
-        if level is not None:
-            return level.get(W+"val") in ("0","1","2","3","4","5","6","7","8")
+        if outline is None and level is not None:
+            outline = level.get(W+"val") in ("0","1","2","3","4","5","6","7","8")
         if key not in styles or key in seen:
-            return False
+            break
         seen.add(key)
         node = styles[key]
+        name = node.find(W+"name")
+        if name is not None and name.get(W+"val", "").strip().casefold() in ("bibliography", "参考文献"):
+            bibliography = True
         parent = node.find(W+"basedOn")
         key = parent.get(W+"val") if parent is not None else None
+    if outline:
+        return OUTLINE_HEADING
+    return BIBLIOGRAPHY if bibliography else DOCX_BODY
 
 
-def docx_review_rows(z, node, part, loc, heading=False):
-    reason = OUTLINE_HEADING if heading else "DOCX 文字层；物理页码依赖排版"
+def docx_review_rows(z, node, part, loc, reason):
     skipped = "原生 Word 公式未纳入文字分析"
     chunks = [[]]
     objects = []
@@ -445,12 +462,12 @@ def report(path,dest,corpus_path=None):
                 for m in SENT.finditer(text):
                     sentence=m.group()
                     if not sentence.strip():continue
-                    if kind==OUTLINE_HEADING:
-                        label,confidence,why="标题","未分析","按 Word 大纲级别排除，保留原文与语料比对"
+                    if kind in EXCLUDED:
+                        label,confidence,why=EXCLUDED[kind]
                     else:
                         label,confidence,why=evidence(sentence) if prob is None or prob>=.75 else ("未分析","不足","OCR 低置信")
                     counts[label]+=1
-                    if kind!=OUTLINE_HEADING:
+                    if kind not in EXCLUDED:
                         counts["total"]+=1
                     score="" if prob is None else f" · OCR {prob:.2f}"
                     if prob is not None and prob<.75 and f"{prob:.2f}"=="0.75":
@@ -459,13 +476,15 @@ def report(path,dest,corpus_path=None):
                     out.write(f"<article id='p{n}s{m.start()}'><small>{esc(loc)} · 字符 {m.start()}–{m.end()} · {esc(kind)}{esc(score)}</small><div><b>写作信号　{label} · {confidence}</b>　{esc(why)}<br><mark class='{label}'>{esc(sentence)}</mark></div><aside><b>本地语料</b><br>{sources}</aside></article>")
             total=counts["total"];assigned=sum(counts[k] for k in ("AI","MIX","HUMAN"))
             coverage=f"{assigned/total:.1%}" if total else "未提取到正文，覆盖率不适用"
-            if counts["标题"] and not total:
+            if (counts["标题"] or counts["参考文献"]) and not total:
                 coverage="无可分类正文，覆盖率不适用"
             summary=f"共 {total} 个非空片段，分类 {assigned}（{coverage}），弃答 {counts['未判断']}，低置信未分析 {counts['未分析']}，空白/跳过/失败位置 {counts['skips']}。"
             if counts["标题"]:
                 summary+=f"另列大纲标题片段 {counts['标题']}，不计入正文分母。"
+            if counts["参考文献"]:
+                summary+=f"另列参考文献片段 {counts['参考文献']}，不计入正文分母。"
             details=" · ".join(f"{k} {counts[k]}" for k in ("AI","MIX","HUMAN"))
-            out.write(f"<section id='coverage'><h2>覆盖统计</h2><p>{summary}</p>{details}<p>分母为成功提取的非空正文片段。大纲标题及跳过的公式、图像和页面单列。无文字时不执行分类。</p></section></html>")
+            out.write(f"<section id='coverage'><h2>覆盖统计</h2><p>{summary}</p>{details}<p>分母为成功提取的非空正文片段。大纲标题、参考文献样式段落及跳过的公式、图像和页面单列。无文字时不执行分类。</p></section></html>")
         # Windows rename refuses to replace an existing destination.
         if os.name=="nt":os.rename(name,dest)
         else:os.link(name,dest)

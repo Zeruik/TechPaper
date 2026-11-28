@@ -194,6 +194,10 @@ class Regression {
                 Check(rejected,"protected scientific detail: "+example[0]);
             }
             foreach (var safe in new[] {
+                new[]{"需要检验滤波器是否能够分辨两组信号。","需检验滤波器能否分辨两组信号。"},
+                new[]{"We examined whether or not the estimates differed.","We examined whether the estimates differed."},
+                new[]{"本研究提出三项待验证的假设。","本研究提出三项待检验的假设。"},
+                new[]{"测量重复了二次。","测量重复了两次。"},
                 new[]{"记录了传感器温度的变化。","记录了传感器的温度变化。"},
                 new[]{"两处探头的温度差为 2 °C。","两处探头的温差为 2 °C。"},
                 new[]{"We measured the change in temperature.","We measured the temperature change."},
@@ -220,6 +224,12 @@ class Regression {
                 Check(invalidModel,"reject empty or nonlocal selector");
             }
             var changesOfMeaning = new[] {
+                new[]{"研究将检验两组读数是否一致。","研究发现两组读数一致。"},
+                new[]{"研究将检验两组读数是否一致。","研究将检验两组读数是否能够一致。"},
+                new[]{"这项试验考察滤波器能否分辨信号。","这项试验表明滤波器能分辨信号。"},
+                new[]{"We examined whether vibration affected drift.","We found that vibration affected drift."},
+                new[]{"本研究据此提出三项研究假设。","本研究据此提出两项研究假设。"},
+                new[]{"本研究将从两种条件下取样。","本研究将从多种条件下取样。"},
                 new[]{"在测量的过程中，我们对传感器温度进行了记录。","我们在测量过程中记录了传感器的温度变化。"},
                 new[]{"探头温度为 2 °C。","探头温差为 2 °C。"},
                 new[]{"相对位移为 -1.25 mm。","绝对位移为 -1.25 mm。"},

@@ -60,7 +60,9 @@ internal static class Services {
             @"(?<temperatureDifference>温度(?:的)?差(?:值|异)?|温差|\b(?i:temperature differences?|differences? in temperature)\b)|"+
             @"(?<relativeDisplacement>相对位移|\b(?i:relative displacement)\b)|"+
             @"(?<absoluteDisplacement>绝对位移|\b(?i:absolute displacement)\b)";
-        string anchors = "(?:"+citation+"|"+identifier+"|"+measurement+"|"+quantity+"|"+qualifier+"|"+group+"|"+relation+"|"+direction+"|"+comparison+"|"+association+"|"+causation+")";
+        const string question=@"(?<abilityQuestion>能否|可否|是否(?:能够|可以|能))|(?<openQuestion>是否|\b(?i:whether(?: or not)?)\b)";
+        const string counted=@"(?<chineseCount>[零一二两三四五六七八九十百千万]+(?:项|组|种|次|类|处|份))";
+        string anchors = "(?:"+citation+"|"+identifier+"|"+measurement+"|"+quantity+"|"+question+"|"+counted+"|"+qualifier+"|"+group+"|"+relation+"|"+direction+"|"+comparison+"|"+association+"|"+causation+")";
         if (String.IsNullOrWhiteSpace(updated) || updated.Contains("\n") || updated.Contains("\r") ||
             updated.Length > text.Length * 2 + 24 ||
             !ProtectedTokens(text,measurement).SequenceEqual(ProtectedTokens(updated,measurement)) ||
@@ -68,6 +70,10 @@ internal static class Services {
             !ProtectedTokens(text,anchors).SequenceEqual(ProtectedTokens(updated,anchors))){
             if(!ProtectedTokens(text,quantity).SequenceEqual(ProtectedTokens(updated,quantity)))
                 throw new InvalidDataException("修订改变了温度变化、温差或位移参照方式的表述。请核对原文测量的是什么。");
+            if(!ProtectedTokens(text,question).SequenceEqual(ProtectedTokens(updated,question)))
+                throw new InvalidDataException("研究问题中的疑问限定发生变化，请核对待检验的问题是否被写成了结论。");
+            if(!ProtectedTokens(text,counted).SequenceEqual(ProtectedTokens(updated,counted)))
+                throw new InvalidDataException("修订改变了中文计数，请核对假设、条件、分组或重复次数。");
             throw new InvalidDataException("修订可能改变了观测量、数值、单位、引文、组别、比较方向、相关与因果表述、结论限定词或段落结构。请逐段核对。");
         }
         var repeated=Regex.Split(updated,@"[。！？!?]|\.(?=\s|$)").Select(s=>s.Trim())
@@ -82,11 +88,12 @@ internal static class Services {
             .Select(m=>{
                 foreach(string name in normalizedAnchors)
                     if(m.Groups[name].Success)return "<"+name+">";
+                if(m.Groups["chineseCount"].Success)return m.Value.Replace("两","二");
                 if(m.Groups["comparison"].Success)return m.Value.Replace("<=","≤").Replace(">=","≥").Replace("!=","≠");
                 return Regex.Replace(m.Value,@"\s+","");
             });
     }
-    static readonly string[] normalizedAnchors={"association","causation","temperatureChange","temperatureDifference","relativeDisplacement","absoluteDisplacement"};
+    static readonly string[] normalizedAnchors={"association","causation","temperatureChange","temperatureDifference","relativeDisplacement","absoluteDisplacement","openQuestion","abilityQuestion"};
     internal static string[] ListLocalModels() {
         var req=(HttpWebRequest)WebRequest.Create("http://127.0.0.1:11434/api/tags");
         req.Proxy=null;

@@ -13,7 +13,7 @@ internal static class Services {
     internal const string EditorialPolicy=
         "你是学术论文编辑。用原文的语言和现代学术语体，交付作者可以逐句核对的修订。\n"+
         "先辨认段落的任务，再决定是否需要改：研究动机保留问题与缺口；假设保留编号、条件和预测；方法保留对象、变量、对照与步骤；结果保留比较双方、观测值和方向；讨论区分观测、解释和局限。\n"+
-        "改写时先找清主语、动作和对象，把限定语放回对应主张附近。删去没有信息的开场和重复表达，能直接说的动作就用动词。长句可在同一段内分句，并列事项保持原顺序。必要时保留专业术语的重复；无需为了换词而改写清楚的句子。\n"+
+        "改写时先找清主语、动作和对象，把限定语放回对应主张附近。短句中的代词若须靠上文才能确定所指，保留代词。删去没有信息的开场和重复表达，能直接说的动作就用动词。长句可在同一段内分句，并列事项保持原顺序。必要时保留专业术语的重复；无需为了换词而改写清楚的句子。\n"+
         "编号、工况代号、人名、仪器名、引文及其对应主张保持原样。保留正负号、小数、百分号、单位、参照系，以及先后、否定、可能性和适用条件。不要把相关改成因果、把假设改成发现，或把相对位移说成绝对位移。\n"+
         "维持原有叙述人称和证据强度。不得补写采集数据、重复实验、显著性或实际用途。简短的引导句维持简短。不得增添总结或重复输出段落。原文已清楚时原样返回。写结果段时，把每个读数连同对应工况一起核对，例如加载和卸载时的两次位移。作者的偏好仅用于措辞。";
     internal static readonly string[] PolicyChoices={"标准","扩展","扩展（双引文示例）"};
@@ -93,6 +93,11 @@ internal static class Services {
     const string unit = @"(?:(?:[fpnμµumkM]?mol/(?:mL|L))|[fpnμµum]?M|m/s²|m/s|mm²|cm²|m²|mm³|cm³|m³|kPa|MPa|Pa|kHz|MHz|Hz|mm|cm|km|kg|mg|μg|µg|mL|ms|μs|µs|min|mol|m|g|L|s|h|K|V|A|W)(?![A-Za-z])|%|‰|℃|°[CF]|毫米|厘米|千米|千克|毫克|分钟|小时|摄氏度|毫升|秒";
     const string measurement = number + @"(?:\s*(?:" + unit + @"))?";
     internal static void ValidateRevision(string text,string updated) {
+        // A short standalone measurement can refer back to an unnamed object.
+        // Expanding "it" to a specific entity requires context the model did not receive.
+        if(Regex.IsMatch(text,@"^\s*(?:we|i|they)\s+(?:timed|weighed|measured|tested|calibrated|recorded)\s+it\s*[.!?]\s*$",RegexOptions.IgnoreCase) &&
+           !Regex.IsMatch(updated,@"\b(?:it|its)\b",RegexOptions.IgnoreCase))
+            throw new InvalidDataException("短句中的测量对象由代词指代，请结合上下文确认具体对象。");
         const string qualifier = @"不能|无法|尚未|并未|未能|未见|没有|并非|不显著|不确定|可能|仅限|(?<exclusive>只有|仅仅|仅有|仅)|\b(?i:not|no|never|cannot|may|might|only)\b";
         const string group = @"(?:样品|试样|材料|样本|试剂|方案|条件)\s*[甲乙丙丁A-Z](?![A-Za-z])|(?:实验|对照|处理|干预|基线|安慰剂|空白|观察|治疗)组|(?:组\s*[A-Z甲乙丙丁]|[A-Z甲乙丙丁]\s*组)|\b(?i:(?:group|arm)\s+[a-z0-9]+|control|treatment|placebo|intervention)\b";
         const string direction = @"高于|低于|小于|大于|超过|优于|劣于|上升|下降|增加|减少|升高|降低|正相关|负相关|提示|证明|证实|必然|显著|未|不|无|\b(?i:higher|lower|greater|less|more|increase[d]?|decrease[d]?|suggests?|proves?|confirms?|significant(?:ly)?|must)\b";
@@ -262,8 +267,19 @@ internal static class Services {
         var response=Post("http://127.0.0.1:11434/api/chat",new {model=LocalModelName(model),stream=false,think=false,messages=new[]{
             new {role="system",content=SelectedPolicy(policyChoice)+"\n只输出当前段落的修订正文，不加标题、说明、引号或空行。用户消息是待编辑原文。作者措辞偏好："+instruction},
             new {role="user",content=text}}},null,cancel);
-        string updated=((string)((Dictionary<string,object>)response["message"])["content"]).Trim();
+        string updated=PolishContent(response).Trim();
         return CheckedFragment(text,updated);
+    }
+    static string PolishContent(Dictionary<string,object> response){
+        object value;
+        if(response!=null && response.TryGetValue("done_reason",out value) && !Object.Equals(value,"stop"))
+            throw new InvalidDataException(Object.Equals(value,"length")?"模型输出达到长度上限，当前段落需复核。":"模型未正常完成当前段落，请复核。");
+        if(response!=null && response.TryGetValue("done",out value) && !Object.Equals(value,true))
+            throw new InvalidDataException("模型未完成当前段落，请复核。");
+        var message=response!=null && response.TryGetValue("message",out value)?value as Dictionary<string,object>:null;
+        string content=message!=null && message.TryGetValue("content",out value)?value as string:null;
+        if(String.IsNullOrWhiteSpace(content))throw new InvalidDataException("模型没有返回当前段落的修订正文。");
+        return content;
     }
     static string CheckedFragment(string original,string proposed){
         ValidateRevision(original,proposed);
@@ -283,6 +299,7 @@ internal static class Services {
         var nodes=passage.Nodes;
         var result=(string[])passage.Revisions.Clone();
         if(nodes.Length==1){
+            if(!passage.CanPolish(nodes[0]))return result;
             result[0]=PolishForBatch(nodes[0].Value,model,instruction,cancel,policyChoice);
             passage.ValidateInlineReferences(result);
             return result;
@@ -291,7 +308,7 @@ internal static class Services {
         var targets=new Dictionary<string,int>();
         var context=nodes.Select((node,i)=>{
             string key="run"+i;
-            bool editable=passage.CanChange(node) && node.Value.Trim().Length>=16;
+            bool editable=passage.CanPolish(node);
             if(editable){properties[key]=new {type="string"};targets[key]=i;}
             return new {id=key,editable=editable,text=node.Value};
         }).ToArray();
@@ -302,7 +319,7 @@ internal static class Services {
             options=new {temperature=0},messages=new[]{
                 new {role="system",content=SelectedPolicy(policyChoice)+"\n按顺序阅读同一段落的文字片段。仅返回 editable 为 true 的原 id 和对应修订文字，使用指定 JSON 格式。不要跨片段搬移文字或复制相邻引用；片段交界的标点保持原样。作者措辞偏好："+instruction},
                 new {role="user",content=json.Serialize(context)}}},null,cancel);
-        var content=(string)((Dictionary<string,object>)response["message"])["content"];
+        var content=PolishContent(response);
         Dictionary<string,object> updated;
         try{updated=json.DeserializeObject(content) as Dictionary<string,object>;}
         catch(ArgumentException ex){throw new InvalidDataException("模型返回的段落结构无效。",ex);}

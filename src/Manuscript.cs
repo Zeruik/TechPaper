@@ -43,6 +43,14 @@ internal sealed class Passage {
         if(hasAnchor)Services.ValidateCitationScope(original.ToString(),proposed.ToString());
     }
     internal XElement[] Nodes { get { return Paragraph.Descendants(Manuscript.W+"t").ToArray(); } }
+    internal static bool IsProseCandidate(string text) {
+        string value=text.Trim();
+        return value.Length>=16 || (Regex.IsMatch(value,@"[。！？!?\.]$") && Regex.IsMatch(value,@"\p{L}"));
+    }
+    internal bool CanPolish(XElement node) {
+        string value=node.Value.Trim();
+        return CanChange(node) && (value.Length>=16 || (value==Text.Trim() && IsProseCandidate(value)));
+    }
     internal bool CanChange(XElement n) {
         var r=n.Parent;
         return Editable && !FieldText.Contains(n) && r!=null && r.Name==Manuscript.W+"r" && !r.Descendants(Manuscript.W+"vertAlign").Any() &&
@@ -265,7 +273,7 @@ internal sealed class Manuscript {
                 p.Elements(W+"r").All(r=>r.Elements().All(n=>n.Name==W+"rPr" || n.Name==W+"t" || n.Name==W+"footnoteReference" || n.Name==W+"endnoteReference" || n.Name==W+"instrText" || n.Name==W+"fldChar")) &&
                 hiddenRuns.Count==0 &&
                 !Regex.IsMatch(t, "[“”「」『』\"《》]");
-            var item=new Passage{Paragraph=p,Text=t,Editable=!references && !unsafeField && !special && plain && !p.Descendants(W+"pPrChange").Any() && !p.Descendants(W+"rPrChange").Any() && t.Length>=16,Reason=Editor.Signals(t)};
+            var item=new Passage{Paragraph=p,Text=t,Editable=!references && !unsafeField && !special && plain && !p.Descendants(W+"pPrChange").Any() && !p.Descendants(W+"rPrChange").Any() && Passage.IsProseCandidate(t),Reason=Editor.Signals(t)};
             item.FieldText.UnionWith(fieldText);
             item.Revisions=item.Nodes.Select(n=>item.CanChange(n)?Editor.Revise(n.Value):n.Value).ToArray();
             item.Suggested=item.Editable ? String.Concat(item.Revisions) : t;

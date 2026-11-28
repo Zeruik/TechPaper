@@ -192,6 +192,21 @@ class Regression {
         var original=File.ReadAllBytes(source);var a=Read(source);var doc=new Manuscript(source);var w=Manuscript.W;
         CheckPrivacy(source,typeof(Manuscript));
         CheckVisibleReviewText(source);
+        var shortDoc=Manuscript.FromPastedText("只有末次读数超过 7。\n结果\n[3]\n7.\nIt rose.");
+        var shortResult=shortDoc.Items[0];
+        Check(shortResult.CanPolish(shortResult.Nodes.Single()) &&
+              shortDoc.Items.Last().CanPolish(shortDoc.Items.Last().Nodes.Single()) &&
+              shortDoc.Items.Skip(1).Take(3).All(p=>!p.Editable),
+              "short Chinese and English sentences eligible; labels, citations and bare numbers protected");
+        bool rejectedShort=false;
+        try{shortResult.SetFragment(0,"只有首次读数超过 7。");}catch(InvalidDataException){rejectedShort=true;}
+        Check(rejectedShort,"short result retains qualifier scope");
+        shortResult.SetFragment(0,"仅有最后一次读数超过 7。");
+        string shortCopy=Path.Combine("build",Guid.NewGuid()+".docx");
+        try{
+            shortDoc.Export(shortCopy,new HashSet<int>{0},false);
+            Check(new Manuscript(shortCopy).Items.First().Text=="仅有最后一次读数超过 7。","accepted short edit reopens");
+        }finally{if(File.Exists(shortCopy))File.Delete(shortCopy);}
         CheckRunBoundaries(source);
         try {
             var ids=new HashSet<int>(Enumerable.Range(0,doc.Items.Count));
@@ -378,6 +393,7 @@ class Regression {
                 new[]{"甲组达标，只有乙组复测。","只有甲组达标，乙组复测。"},
                 new[]{"仅末次读数超过 7。","末次读数超过 7。"},
                 new[]{"仅末次读数超过 7。","仅首次读数超过 7。"},
+                new[]{"We timed it.","We timed the process."},
                 new[]{"只有达到阈值才启动。","只要达到阈值就启动。"}
             };
             int blocked = 0;
@@ -388,6 +404,7 @@ class Regression {
             Console.WriteLine("Scientific counterexamples blocked: "+blocked+"/"+changesOfMeaning.Length);
             Check(blocked==changesOfMeaning.Length, "new scientific counterexamples blocked: "+blocked+"/"+changesOfMeaning.Length);
             Services.ValidateRevision("我们对 5 s 序列的峰值进行了比较[1]。","我们比较了 5 s 序列的峰值[1]。");
+            Services.ValidateRevision("We timed it.","We measured its duration.");
             Services.ValidateRevision("只有甲组达到阈值。","仅甲组达到阈值。");
             Services.ValidateRevision("只有末次读数超过 7。","仅有最后一次读数超过 7。");
             const string intro="本次测试包含两个不同的测量步骤：";

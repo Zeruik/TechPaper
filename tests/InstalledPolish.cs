@@ -16,6 +16,8 @@ using System.Windows.Forms;
 using System.Xml.Linq;
 
 class InstalledPolish {
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    static extern IntPtr SendMessage(IntPtr handle,int message,IntPtr key,IntPtr data);
     const BindingFlags Fields=BindingFlags.Instance|BindingFlags.NonPublic;
     static readonly JavaScriptSerializer Json=new JavaScriptSerializer();
     sealed class Fixture : IWebRequestCreate {
@@ -176,8 +178,35 @@ class InstalledPolish {
             Wait(()=>batch.IsCompleted);batch.GetAwaiter().GetResult();
             Require(rows.Items[cited].SubItems[3].Text=="保留先前建议" && rows.Items[cited].ToolTipText.Contains("引用所在"),
                 "workspace did not preserve a previous suggestion on citation drift");
+            var reason=(Label)type.GetField("reviewReason",Fields).GetValue(form);
+            rows.Focus();rows.Items[cited].Selected=true;rows.Items[cited].Focused=true;
+            Wait(()=>reason.Visible && reason.Text.Contains("引用所在"));
+            Require(reason.AccessibilityObject.Description==rows.Items[cited].ToolTipText &&
+                    reason.Parent.ClientRectangle.Contains(reason.Bounds),"review reason unavailable or outside preview");
+            Keys next=cited+1<rows.Items.Count?Keys.Down:Keys.Up;
+            SendMessage(rows.Handle,0x0100,(IntPtr)next,IntPtr.Zero);
+            Wait(()=>!reason.Visible && reason.Text.Length==0);
+            SendMessage(rows.Handle,0x0100,(IntPtr)(next==Keys.Down?Keys.Up:Keys.Down),IntPtr.Zero);
+            Wait(()=>reason.Visible && reason.Text.Contains("引用所在"));
+            Require(rows.Items[confirmed].Checked && !rows.Items[cited].Checked,
+                    "keyboard navigation changed consent");
+            Console.WriteLine("PASS keyboard navigation shows the selected review reason without changing confirmation");
             Console.WriteLine("PASS installed citation scope warning preserves earlier suggestion");
             int remaining=eligible.First(index=>index!=cited);
+            foreach(object incomplete in new object[]{
+                new{done=true,done_reason="length",message=new{content="看似完整的正文。"}},
+                new{done=false,message=new{content="尚在生成。"}},
+                new{done=true,done_reason="stop",message=new{}}}){
+                batch=(Task)start.Invoke(form,new object[]{new[]{remaining,cited},"fixture"});
+                Reply(Receive(server,"/api/show"),new{model_info=new{fixture=true}});
+                Reply(Receive(server,"/api/chat"),incomplete);
+                Reply(Receive(server,"/api/chat"),new{done=true,done_reason="stop",message=new{content=Json.Serialize(edits)}});
+                Wait(()=>batch.IsCompleted);batch.GetAwaiter().GetResult();
+                Require(rows.Items[remaining].ToolTipText.Contains("模型") &&
+                        rows.Items[cited].SubItems[3].Text=="模型建议" && rows.Items[confirmed].Checked,
+                        "incomplete response interrupted batch or lost confirmed selection");
+            }
+            Console.WriteLine("PASS incomplete, truncated and empty model replies isolated to one paragraph");
             string beforeFailure=rows.Items[remaining].SubItems[3].Text;
             foreach(string error in new[]{"CUDA error: out of memory","runtime failure"}){
                 batch=(Task)start.Invoke(form,new object[]{new[]{cited,remaining},"fixture"});

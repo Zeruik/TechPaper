@@ -16,7 +16,7 @@ namespace TechPaper {
 internal sealed partial class Workspace : Form {
     Manuscript doc;
     readonly Color teal=Color.FromArgb(8,81,80), ink=Color.FromArgb(33,52,53);
-    Label file,summary,status,revisionLabel;
+    Label file,summary,status,revisionLabel,reviewReason;
     ListView rows;
     RichTextBox before,after;
     CheckBox clean;
@@ -43,11 +43,14 @@ internal sealed partial class Workspace : Form {
         rows.Columns.Add("采用",65);rows.Columns.Add("段落",58);rows.Columns.Add("文风提示",150);rows.Columns.Add("修订",100);rows.Columns.Add("正文摘录",550);
         rows.SelectedIndexChanged+=(s,e)=>Preview();rows.ItemCheck+=(s,e)=>{if(doc!=null && e.Index<doc.Items.Count && doc.Items[e.Index].Text==doc.Items[e.Index].Suggested)e.NewValue=CheckState.Unchecked;};
         layout.Controls.Add(rows,0,2);
-        var compare=new TableLayoutPanel{Dock=DockStyle.Fill,ColumnCount=2,RowCount=2,Padding=new Padding(0,8,0,0)};
+        var compare=new TableLayoutPanel{Dock=DockStyle.Fill,ColumnCount=2,RowCount=3,Padding=new Padding(0,8,0,0)};
         for(int i=0;i<2;i++)compare.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,50));
         compare.RowStyles.Add(new RowStyle(SizeType.Absolute,28));compare.RowStyles.Add(new RowStyle(SizeType.Percent,100));
+        compare.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         compare.Controls.Add(LabelAt("原文",10),0,0);revisionLabel=LabelAt("修订预览",10);compare.Controls.Add(revisionLabel,1,0);
         before=CompareBox();after=CompareBox();compare.Controls.Add(before,0,1);compare.Controls.Add(after,1,1);layout.Controls.Add(compare,0,3);
+        reviewReason=new Label{AutoSize=true,Dock=DockStyle.Fill,Visible=false,AccessibleName="段落复核原因"};
+        compare.Controls.Add(reviewReason,0,2);compare.SetColumnSpan(reviewReason,2);
         var actions=new FlowLayoutPanel{Dock=DockStyle.Fill,WrapContents=false,Padding=new Padding(0,8,0,0)};
         save=ButtonAt("导出 DOCX 副本",Export);save.BackColor=teal;save.ForeColor=Color.White;
         clean=new CheckBox{Text="清理文档元数据",Checked=false,AutoSize=true,Margin=new Padding(8,10,12,0)};
@@ -88,6 +91,13 @@ internal sealed partial class Workspace : Form {
         string original=n<0?"":doc.Items[n].Text, revised=n<0?"":doc.Items[n].Suggested;
         bool coarse=ShowDifference(before,after,original,revised);
         revisionLabel.Text=coarse?"修订预览（部分差异按范围标出）":"修订预览";
+        ShowReviewReason(n);
+    }
+    void ShowReviewReason(int index){
+        string reason=index<0?"":rows.Items[index].ToolTipText;
+        reviewReason.Text=reason.Length==0?"":"复核原因："+reason;
+        reviewReason.AccessibleDescription=reason;
+        reviewReason.Visible=reason.Length>0;
     }
     // Token offsets are UTF-16 indices, as required by RichTextBox.Select.
     static readonly System.Text.RegularExpressions.Regex diffToken=new System.Text.RegularExpressions.Regex(
@@ -212,7 +222,7 @@ internal sealed partial class Workspace : Form {
     internal int[] PolishIndices(bool all){
         int current=Selected();
         return Enumerable.Range(0,doc.Items.Count).Where(i=>!rows.Items[i].Checked && (all || i==current) &&
-            doc.Items[i].Nodes.Any(n=>doc.Items[i].CanChange(n) && n.Value.Trim().Length>=16)).ToArray();
+            doc.Items[i].Nodes.Any(doc.Items[i].CanPolish)).ToArray();
     }
     internal async Task PolishBatch(int[] indices,string modelName){
         int done=0,unchanged=0,skipped=0;
@@ -237,6 +247,7 @@ internal sealed partial class Workspace : Form {
                 catch(InvalidDataException ex){
                     rows.Items[i].ToolTipText=ex.Message;
                     rows.Items[i].SubItems[3].Text=p.Suggested==p.Text?"模型改动已拦截":"保留先前建议";
+                    if(i==Selected())ShowReviewReason(i);
                     skipped++;continue;
                 }
                 rows.Items[i].ToolTipText="";

@@ -98,6 +98,30 @@ def ocr(image, location, offset=(0,0), columns=False):
             yield f"{location} / 行 {i} / px {coords}",text,"OCR；阅读顺序待核",float(prob)
 
 
+def visible_slide_rows(z, root, part, index):
+    location = f"幻灯片 {index}"
+    if root.get("show", "true").strip() in ("0", "false"):
+        yield location, "", "放映时隐藏的幻灯片已跳过", None
+        return
+    # Keep source ordinals even when earlier shapes are hidden.
+    positions = {node:i for i, node in enumerate(root.iter(A+"p"), 1)}
+    image_positions = {node:i for i, node in enumerate(root.iter(A+"blip"), 1)}
+    stack = [root]
+    while stack:
+        node = stack.pop()
+        props = node.find("*/"+P+"cNvPr")
+        if props is not None and props.get("hidden", "false").strip() in ("1", "true"):
+            yield f"{location} / 对象 {props.get('id', '?')}", "", "显式隐藏的幻灯片对象已跳过", None
+            node.clear()
+            continue
+        stack.extend(reversed(list(node)))
+    for paragraph in root.iter(A+"p"):
+        text = "".join(n.text or "" for n in paragraph.iter(A+"t"))
+        if text.strip():
+            yield f"{location} / 段 {positions[paragraph]}", text, "幻灯片文字层；形状顺序待核", None
+    yield from embedded(z, root, part, location, image_positions)
+
+
 def office(path):
     from PIL import Image
     with zipfile.ZipFile(path) as z:
@@ -108,10 +132,7 @@ def office(path):
             for index,slide in enumerate(deck.findall(".//"+P+"sldId"),1):
                 target=lookup[slide.get(R+"id")]
                 root=ET.fromstring(z.read(target))
-                for j,paragraph in enumerate(root.iter(A+"p"),1):
-                    t="".join(n.text or "" for n in paragraph.iter(A+"t"))
-                    if t.strip(): yield f"幻灯片 {index} / 段 {j}",t,"幻灯片文字层；形状顺序待核",None
-                yield from embedded(z,root,target,f"幻灯片 {index}")
+                yield from visible_slide_rows(z,root,target,index)
         else:
             parts=["word/document.xml"]
             parts += [name for name in z.namelist() if re.fullmatch(r"word/(?:footnotes|endnotes|header\d+|footer\d+)\.xml",name)]
@@ -177,12 +198,14 @@ def docx_text(node):
             yield from docx_text(child)
 
 
-def embedded(z,node,part,loc):
+def embedded(z,node,part,loc,image_positions=None):
     from PIL import Image
     images=list(node.iter(A+"blip"))
     if not images:return
     lookup=rels(z,part)
     for i,img in enumerate(images,1):
+        if image_positions is not None:
+            i = image_positions[img]
         where=f"{loc} / 图 {i}（原图像素）"
         target=lookup.get(img.get(R+"embed"))
         try:

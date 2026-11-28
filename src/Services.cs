@@ -111,6 +111,10 @@ internal static class Services {
         }
         if(Regex.Matches(text,purpose).Count!=Regex.Matches(updated,purpose).Count)
             throw new InvalidDataException("修订改变了明确写出的目的，请核对操作理由是否保留。");
+        foreach(string method in reportedMethods){
+            if(Regex.Matches(text,method).Count!=Regex.Matches(updated,method).Count)
+                throw new InvalidDataException("修订改变了重复试验、数据收集或数据规模的表述，请核对原文是否记载该方法。");
+        }
         ValidateCitationScope(text,updated);
         if(DoubledParagraph(updated) && !DoubledParagraph(text))
             throw new InvalidDataException("修订将同一段内容输出了两遍，请核对重复部分。");
@@ -121,6 +125,11 @@ internal static class Services {
                 throw new InvalidDataException("修订新增了重复句，请检查是否重复输出同一段。");
         }
     }
+    static readonly string[] reportedMethods={
+        @"(?:反复|多次|重复)(?:进行|开展)?(?:了)?(?:试验|实验)|\b(?i:repeat(?:ed|ing)? (?:the |these )?(?:experiments?|trials?)|(?:experiments?|trials?) (?:was|were) repeated)\b",
+        @"(?:收集|采集)(?:了)?(?:大量(?:的)?|相关|原始)?数据|数据(?:的)?(?:收集|采集)|\b(?i:(?:collect(?:ed|ing)?|gather(?:ed|ing)?) (?:the |raw |a large amount of )?data|data (?:was|were) (?:collected|gathered)|data collection)\b",
+        @"大量(?:的)?数据|\b(?i:large amounts? of data|large volumes? of data)\b"
+    };
     static bool DoubledParagraph(string text){
         if(text.Length<48)return false;
         // Ignore spacing and sentence punctuation only. Keep signs, units and citation brackets.

@@ -42,7 +42,7 @@ class DesktopChecks {
             ctx.Response.ContentLength64=answer.Length;ctx.Response.Close(answer,false);
             Pump(()=>plain.IsCompleted);Check(plain.Result==left,"safe single run response");
         }
-        foreach(string mode in new[]{"valid","punctuation","protected","missing","splitClaim","duplicate"}){
+        foreach(string mode in new[]{"valid","punctuation","protected","missing","splitClaim","duplicate","inventedMethod"}){
             var task=Task.Run(()=>Services.PolishParagraph(passage,"fixture","",CancellationToken.None,2));
             var request=server.GetContextAsync();Pump(()=>request.IsCompleted);
             var ctx=request.Result;
@@ -57,12 +57,14 @@ class DesktopChecks {
             if(mode=="protected")values["run1"]="[8]";
             if(mode=="missing")values.Remove("run2");
             if(mode=="splitClaim")values["run0"]="We repeated the reading. We then estimated drift";
+            if(mode=="inventedMethod")values["run0"]="We collected data. "+revised;
             if(mode=="duplicate")values["run0"]=revised+". "+revised.Replace("reading to","reading, to");
             var answer=Encoding.UTF8.GetBytes(json.Serialize(new{message=new{content=json.Serialize(values)}}));
             ctx.Response.ContentLength64=answer.Length;ctx.Response.Close(answer,false);
             Pump(()=>task.IsCompleted);
             if(mode=="valid")Check(task.Result.SequenceEqual(new[]{" "+revised,"[7]",right}),"apply context edit preserving whitespace and citation");
             else Check(task.IsFaulted && task.Exception.GetBaseException() is InvalidDataException,"reject unsafe model response: "+mode);
+            if(mode=="inventedMethod")Check(task.Exception.GetBaseException().Message.Contains("数据收集"),"specific unsupported method warning");
             if(mode=="duplicate")Check(task.Exception.GetBaseException().Message.Contains("输出了两遍"),"specific duplicate content warning");
             Check(passage.Revisions.SequenceEqual(new[]{left,"[7]",right}),"paragraph remains unchanged until validation completes");
         }

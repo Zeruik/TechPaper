@@ -209,6 +209,9 @@ class Regression {
                 Check(rejected,"protected scientific detail: "+example[0]);
             }
             foreach (var safe in new[] {
+                new[]{"研究人员重复进行了试验，并采集了大量数据。","研究人员反复试验，收集了大量数据。"},
+                new[]{"The team repeated the experiments and collected data.","The experiments were repeated and data were collected."},
+                new[]{"该文报告了支座在潮湿环境下的变形特征[7]。","该文描述了支座在潮湿环境下的变形特征[7]。"},
                 new[]{"在环境温度稳定以后，观察员记录探头读数并检查测量台的安装状态。在环境温度稳定以后，观察员记录探头读数并检查测量台的安装状态。","在环境温度稳定以后，观察员记录探头读数并检查测量台的安装状态；在环境温度稳定以后，观察员记录探头读数并检查测量台的安装状态。"},
                 new[]{"在偏心加载时，读数为 1.7 mm。","偏心加载时记录到 1.7 mm。"},
                 new[]{"During unloading the gauge read 3 mm.","During unloading, the gauge registered 3 mm."},
@@ -246,6 +249,11 @@ class Regression {
                 Check(invalidModel,"reject empty or nonlocal selector");
             }
             var changesOfMeaning = new[] {
+                new[]{"该文报告了支座在潮湿环境下的变形特征[7]。","该文通过反复试验报告了支座在潮湿环境下的变形特征[7]。"},
+                new[]{"研究者比较了探头响应，报告了两种材料的差异。","研究者采集了数据，比较了探头响应，报告了两种材料的差异。"},
+                new[]{"研究团队收集数据后比较了试样的纹理差异。","研究团队收集大量数据后比较了试样的纹理差异。"},
+                new[]{"The study reported the shape of the dry specimen [4].","The team repeated the experiments and reported the shape of the dry specimen [4]."},
+                new[]{"The team compared the response profiles for the dry specimens.","The team collected data and compared the response profiles for the dry specimens."},
                 new[]{"在环境温度稳定以后，我们继续记录传感器读数，随后检查测量台的安装状态。",
                     "温度稳定后，继续记录传感器读数，随后检查测量台的安装状态。温度稳定后继续记录传感器读数；随后检查测量台的安装状态。"},
                 new[]{"At the bench, the observer logged the readings and checked the fixture.",

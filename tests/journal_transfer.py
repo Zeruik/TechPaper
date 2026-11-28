@@ -23,10 +23,7 @@ def decisions(session, tokenizer, text, lang):
         yield variant, "AI" if low>threshold else "HUMAN" if high<=.05 else "abstain"
 
 
-def main(folder, previous, model, accessions, prior_accessions=(), controls=None):
-    occupied = set().union(*(authors(previous / (paper + ".xml")) for paper in ARTICLES))
-    for paper in prior_accessions:
-        occupied.update(authors(folder / (paper + ".xml")))
+def load_candidate(model):
     verify_assets(model, DIGESTS)
     ort.disable_telemetry_events()
     options = ort.SessionOptions()
@@ -35,6 +32,14 @@ def main(folder, previous, model, accessions, prior_accessions=(), controls=None
     tokenizer = Tokenizer.from_file(str(model/"tokenizer.json"))
     tokenizer.no_padding()
     tokenizer.no_truncation()
+    return session, tokenizer
+
+
+def main(folder, previous, model, accessions, prior_accessions=(), controls=None):
+    occupied = set().union(*(authors(previous / (paper + ".xml")) for paper in ARTICLES))
+    for paper in prior_accessions:
+        occupied.update(authors(folder / (paper + ".xml")))
+    session, tokenizer = load_candidate(model)
     counts = Counter()
     for accession in accessions:
         path = folder / (accession + ".xml")

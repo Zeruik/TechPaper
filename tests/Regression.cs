@@ -394,6 +394,7 @@ class Regression {
                 new[]{"仅末次读数超过 7。","末次读数超过 7。"},
                 new[]{"仅末次读数超过 7。","仅首次读数超过 7。"},
                 new[]{"We timed it.","We timed the process."},
+                new[]{"We noted a flicker before the switch closed.","We noted a flicker after the switch closed."},
                 new[]{"只有达到阈值才启动。","只要达到阈值就启动。"}
             };
             int blocked = 0;
@@ -405,6 +406,18 @@ class Regression {
             Check(blocked==changesOfMeaning.Length, "new scientific counterexamples blocked: "+blocked+"/"+changesOfMeaning.Length);
             Services.ValidateRevision("我们对 5 s 序列的峰值进行了比较[1]。","我们比较了 5 s 序列的峰值[1]。");
             Services.ValidateRevision("We timed it.","We measured its duration.");
+            foreach(var pair in new[]{
+                new[]{"探头已经归零。","The probe was reset."},
+                new[]{"We sealed the jar.","我们密封了容器。"},
+                new[]{"噪声在探头移开后减弱。","噪声 faded once the probe moved."}}){
+                bool warned=false;
+                try{Services.CheckedFragment(pair[0],pair[1]);}
+                catch(InvalidDataException ex){warned=ex.Message.Contains("修订语言");}
+                Check(warned,"unexpected model translation requires review");
+            }
+            Services.CheckedFragment("我们使用 FFT 对信号进行了分析。","我们使用 FFT 分析了信号。");
+            Services.CheckedFragment("We recorded the label 样品甲.","We noted the label 样品甲.");
+            Services.ValidateRevision("We noted a flicker before the switch closed. Its cause remains unknown.","We observed a flicker prior to the switch closure. Its cause remains unidentified.");
             Services.ValidateRevision("只有甲组达到阈值。","仅甲组达到阈值。");
             Services.ValidateRevision("只有末次读数超过 7。","仅有最后一次读数超过 7。");
             const string intro="本次测试包含两个不同的测量步骤：";

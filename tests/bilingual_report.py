@@ -41,9 +41,7 @@ class Highlights(HTMLParser):
             self.rows.append((self.location, self.text, self.label))
 
 
-def run(folder, worker):
-    rows = list(source_texts(folder))
-    # One paragraph per abstract. Keep each paper, its translation and controls paired.
+def report_rows(rows, worker):
     w = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
     root = ET.Element(w + "document")
     body = ET.SubElement(root, w + "body")
@@ -72,6 +70,7 @@ def run(folder, worker):
         highlights.close()
     labels = defaultdict(Counter)
     ends = defaultdict(int)
+    spans = defaultdict(list)
     for location, highlighted, label in highlights.rows:
         paragraph, start, end = map(int, re.search(
             r"document\.xml / 段 (\d+) · 字符 (\d+)–(\d+)", location).groups())
@@ -81,9 +80,17 @@ def run(folder, worker):
         assert text[start:end] == highlighted
         ends[paragraph] = end
         labels[paragraph][label] += 1
+        spans[paragraph].append((start, end, label))
+    for i, (_, _, _, text) in enumerate(rows, 1):
+        assert labels[i] and not text[ends[i]:].strip()
+    return labels, spans
+
+
+def run(folder, worker):
+    rows = list(source_texts(folder))
+    labels, _ = report_rows(rows, worker)
     groups = defaultdict(Counter)
     for i, (_, language, role, text) in enumerate(rows, 1):
-        assert labels[i] and not text[ends[i]:].strip()
         counts = groups[language, role]
         counts.update(labels[i])
         counts["documents"] += 1

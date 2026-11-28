@@ -102,7 +102,7 @@ internal static class Services {
         const string group = @"(?:样品|试样|材料|样本|试剂|方案|条件)\s*[甲乙丙丁A-Z](?![A-Za-z])|(?:实验|对照|处理|干预|基线|安慰剂|空白|观察|治疗)组|(?:组\s*[A-Z甲乙丙丁]|[A-Z甲乙丙丁]\s*组)|\b(?i:(?:group|arm)\s+[a-z0-9]+|control|treatment|placebo|intervention)\b";
         const string direction = @"高于|低于|小于|大于|超过|优于|劣于|上升|下降|增加|减少|升高|降低|正相关|负相关|提示|证明|证实|必然|显著|未|不|无|\b(?i:higher|lower|greater|less|more|increase[d]?|decrease[d]?|suggests?|proves?|confirms?|significant(?:ly)?|must)\b";
         const string relation = @"纳入|排除|支持|推翻|正向|负向|反向|(?:照射|给药|处理|干预|暴露|实验|试验|治疗|加热|冷却)[前后]|" +
-            @"\b(?i:before|after|prior to|following|include[ds]?|exclude[ds]?|above|below|exceed(?:s|ed)?|approach(?:es|ed)?|rise|rose|risen|fall|fell|fallen|could|likely|unlikely|rule[ds]? out|establish(?:es|ed)?)\b";
+            @"(?<before>\b(?i:before|prior\s+to)\b)|\b(?i:after|following|include[ds]?|exclude[ds]?|above|below|exceed(?:s|ed)?|approach(?:es|ed)?|rise|rose|risen|fall|fell|fallen|could|likely|unlikely|rule[ds]? out|establish(?:es|ed)?)\b";
         const string comparison = @"(?<comparison><=|>=|!=|[<>≤≥=≠])|至少|至多|最多|最少|\b(?i:at least|at most)\b";
         const string endpoint = @"(?<firstReading>(?:首|第一)次)|(?<lastReading>(?:末|最后一)次)|(?<firstRound>(?:首|第一)轮)|(?<lastRound>(?:末|最后一)轮)";
         const string association = @"(?<association>相关|关联|有关|\b(?i:associat(?:ed|ion)|correlat(?:ed|es|ion)|linked to|related to)\b)";
@@ -209,7 +209,7 @@ internal static class Services {
                 return Regex.Replace(m.Value,@"\s+","");
             });
     }
-    static readonly string[] normalizedAnchors={"association","causation","temperatureChange","temperatureDifference","relativeDisplacement","absoluteDisplacement","openQuestion","abilityQuestion","eccentricLoad","centeredLoad","loading","unloading","inlet","outlet","upTo","downTo","upBy","downBy","exclusive","firstReading","lastReading","firstRound","lastRound"};
+    static readonly string[] normalizedAnchors={"before","association","causation","temperatureChange","temperatureDifference","relativeDisplacement","absoluteDisplacement","openQuestion","abilityQuestion","eccentricLoad","centeredLoad","loading","unloading","inlet","outlet","upTo","downTo","upBy","downBy","exclusive","firstReading","lastReading","firstRound","lastRound"};
     internal static string[] ListLocalModels() {
         var req=(HttpWebRequest)WebRequest.Create("http://127.0.0.1:11434/api/tags");
         req.Proxy=null;
@@ -281,7 +281,15 @@ internal static class Services {
         if(String.IsNullOrWhiteSpace(content))throw new InvalidDataException("模型没有返回当前段落的修订正文。");
         return content;
     }
-    static string CheckedFragment(string original,string proposed){
+    internal static string CheckedFragment(string original,string proposed){
+        // Review large changes of writing system in model output. Technical terms
+        // may legitimately use another script, so require loss as well as gain.
+        const string han=@"[\u3400-\u4DBF\u4E00-\u9FFF]", latin=@"[A-Za-z]+";
+        int oldHan=Regex.Matches(original,han).Count, newHan=Regex.Matches(proposed,han).Count;
+        int oldLatin=Regex.Matches(original,latin).Count, newLatin=Regex.Matches(proposed,latin).Count;
+        if((oldHan>=4 && newHan*2<=oldHan && newLatin>=oldLatin+(newHan==0?2:4)) ||
+           (oldLatin>=2 && newLatin*2<=oldLatin && newHan>=oldHan+4))
+            throw new InvalidDataException("模型可能翻译了原文，请核对修订语言及术语。");
         ValidateRevision(original,proposed);
         // Validation established a one-to-one sequence of identical numbers and units.
         // Keep the author's unit spacing even when a model normalizes nonbreaking spaces.

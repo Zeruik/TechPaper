@@ -123,7 +123,6 @@ def visible_slide_rows(z, root, part, index):
 
 
 def office(path):
-    from PIL import Image
     with zipfile.ZipFile(path) as z:
         if path.suffix.lower()==".pptx":
             part="ppt/presentation.xml"
@@ -153,8 +152,7 @@ def office(path):
                             hidden_ancestor = any(hidden_run(ancestor) for ancestor in stack if ancestor.tag == W+"r")
                             if not revision_depth and not hidden_ancestor:
                                 loc = f"{part.split('/')[-1]} / 段 {count}"
-                                yield from docx_review_rows(node, loc)
-                                yield from embedded(z,node,part,loc)
+                                yield from docx_review_rows(z, node, part, loc)
                             node.clear()
                         elif revision or (node.tag == W+"r" and hidden_run(node)):
                             node.clear()
@@ -166,27 +164,40 @@ def hidden_run(run):
     return any(f.get(W+"val", "true").lower() not in ("false", "0", "off") for f in flags)
 
 
-def docx_review_rows(node, loc):
+def docx_review_rows(z, node, part, loc):
     reason = "DOCX 文字层；物理页码依赖排版"
     skipped = "原生 Word 公式未纳入文字分析"
     chunks = [[]]
+    objects = []
     for token in docx_text(node):
-        if token is None:
+        if not isinstance(token, str):
+            objects.append(token)
             chunks.append([])
         else:
             chunks[-1].append(token)
-    for i, tokens in enumerate(chunks):
+    formulas = images = 0
+    lookup = None
+    texts = ["".join(tokens) for tokens in chunks]
+    split_text = any(obj.tag == M+"oMath" for obj in objects) or sum(bool(t.strip()) for t in texts)>1
+    for i, chunk in enumerate(texts):
         if i:
-            yield f"{loc} / 公式 {i}", "", skipped, None
-        chunk = "".join(tokens)
+            obj = objects[i-1]
+            if obj.tag == M+"oMath":
+                formulas += 1
+                yield f"{loc} / 公式 {formulas}", "", skipped, None
+            else:
+                images += 1
+                if lookup is None:
+                    lookup = rels(z,part)
+                yield from embedded_image(z, obj, lookup, loc, images, columns=True)
         if chunk.strip():
-            segment = f"{loc} / 文字片段 {i+1}" if len(chunks) > 1 else loc
+            segment = f"{loc} / 文字片段 {i+1}" if split_text else loc
             yield segment, chunk, reason, None
 
 
 def docx_text(node):
-    if node.tag == M+"oMath":
-        yield None
+    if node.tag in (M+"oMath", A+"blip"):
+        yield node
     elif node.tag == W+"t":
         yield node.text or ""
     elif node.tag == W+"tab":
@@ -199,21 +210,25 @@ def docx_text(node):
 
 
 def embedded(z,node,part,loc,image_positions=None):
-    from PIL import Image
     images=list(node.iter(A+"blip"))
     if not images:return
     lookup=rels(z,part)
     for i,img in enumerate(images,1):
         if image_positions is not None:
             i = image_positions[img]
-        where=f"{loc} / 图 {i}（原图像素）"
-        target=lookup.get(img.get(R+"embed"))
-        try:
-            if not target:raise ValueError()
-            with z.open(target) as data, Image.open(data) as photo:
-                yield from ocr(photo,where)
-        except Exception as ex:
-            yield where,"","图像跳过："+type(ex).__name__,None
+        yield from embedded_image(z, img, lookup, loc, i)
+
+
+def embedded_image(z, img, lookup, loc, index, columns=False):
+    from PIL import Image
+    where=f"{loc} / 图 {index}（原图像素）"
+    target=lookup.get(img.get(R+"embed"))
+    try:
+        if not target:raise ValueError()
+        with z.open(target) as data, Image.open(data) as photo:
+            yield from ocr(photo,where,columns=columns)
+    except Exception as ex:
+        yield where,"","图像跳过："+type(ex).__name__,None
 
 
 def native_lines(text, pdf, page_width):

@@ -38,7 +38,47 @@ class InstalledPolish {
     static XDocument Body(ZipArchive zip){
         using(var stream=zip.GetEntry("word/document.xml").Open())return XDocument.Load(stream,LoadOptions.PreserveWhitespace);
     }
+    static void CheckSplitThreshold(Form form,HttpListener server,string sample){
+        string input=Path.Combine(Path.GetTempPath(),Guid.NewGuid()+".docx");
+        const string left="The protocol requires at ",right="least 5 mL of reference solution.";
+        try{
+            File.Copy(sample,input);
+            using(var zip=ZipFile.Open(input,ZipArchiveMode.Update)){
+                var body=Body(zip);var w=body.Root.Name.Namespace;
+                body.Root.Element(w+"body").AddFirst(new XElement(w+"p",
+                    new XElement(w+"r",new XElement(w+"t",new XAttribute(XNamespace.Xml+"space","preserve"),left)),
+                    new XElement(w+"r",new XElement(w+"rPr",new XElement(w+"i")),new XElement(w+"t",right))));
+                zip.GetEntry("word/document.xml").Delete();
+                using(var stream=zip.CreateEntry("word/document.xml").Open())body.Save(stream);
+            }
+            var type=form.GetType();
+            type.GetMethod("LoadFile",Fields).Invoke(form,new object[]{input});
+            var rows=(ListView)type.GetField("rows",Fields).GetValue(form);
+            Wait(()=>rows.Items.Count>0 && rows.Items[0].SubItems[4].Text.Contains(left.Trim()));
+            var task=(Task)type.GetMethod("PolishBatch",Fields).Invoke(form,new object[]{new[]{0},"fixture"});
+            Reply(Receive(server,"/api/show"),new{model_info=new{fixture=true}});
+            Reply(Receive(server,"/api/chat"),new{message=new{content=Json.Serialize(new{run0=left,run1=right.Replace("least","most")})}});
+            Wait(()=>task.IsCompleted);task.GetAwaiter().GetResult();
+            Require(rows.Items[0].SubItems[3].Text=="模型改动已拦截" && !rows.Items[0].Checked,
+                "installed workspace accepted a reversed split threshold");
+            Console.WriteLine("PASS installed workspace rejects split threshold");
+        }finally{if(File.Exists(input))File.Delete(input);}
+    }
     [STAThread]static void Main(string[] args){
+        // Keep the same WinForms synchronization context as the installed application
+        // across successive asynchronous imports and reviewer actions.
+        EventHandler run=null;
+        Exception failure=null;
+        run=(sender,e)=>{
+            Application.Idle-=run;
+            try{CheckWorkspace(args);}catch(Exception ex){failure=ex;}
+            finally{Application.ExitThread();}
+        };
+        Application.Idle+=run;
+        Application.Run();
+        if(failure!=null)throw new InvalidOperationException("Installed workspace check failed",failure);
+    }
+    static void CheckWorkspace(string[] args){
         string input=Path.GetFullPath(args[1]);
         string output=Path.Combine(Path.GetTempPath(),Guid.NewGuid()+".docx");
         var source=File.ReadAllBytes(input);
@@ -92,6 +132,7 @@ class InstalledPolish {
                 }
                 Require(source.SequenceEqual(File.ReadAllBytes(input)),"source changed");
             }finally{if(File.Exists(output))File.Delete(output);}
+            CheckSplitThreshold(form,server,input);
         }
         Console.WriteLine("PASS installed paragraph context, stop, confirmed selection and citation roundtrip");
     }

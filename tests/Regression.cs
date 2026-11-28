@@ -90,6 +90,14 @@ class Regression {
             new XElement(w+"r",new XElement(w+"rPr",new XElement(w+"i")),new XElement(w+"t",right)));
         body.AddFirst(paragraph("我们认为","值得注意的是，样本量有限。"),
                       paragraph("We repeated the test ","in order to measure drift."));
+        const string claim="The lamp was warm and the panel was dry";
+        var tail=body.Elements(w+"p").Skip(1).First();
+        foreach(var marker in new[]{
+            new XElement(w+"r",new XElement(w+"rPr",new XElement(w+"vertAlign",new XAttribute(w+"val","superscript"))),new XElement(w+"t","4")),
+            new XElement(w+"r",new XElement(w+"footnoteReference",new XAttribute(w+"id","1")))}){
+            var p=paragraph(claim,". We checked the cable.");
+            p.Elements(w+"r").First().AddAfterSelf(marker);tail.AddAfterSelf(p);tail=p;
+        }
         parts["word/document.xml"]=System.Text.Encoding.UTF8.GetBytes(xml.ToString(SaveOptions.DisableFormatting));
         try{
             using(var zip=ZipFile.Open(input,ZipArchiveMode.Create))
@@ -98,9 +106,16 @@ class Regression {
             var doc=new Manuscript(input);
             Check(doc.Items[0].Suggested==doc.Items[0].Text,"formatting split is not a new sentence opening");
             Check(doc.Items[1].Suggested=="We repeated the test to measure drift.","safe multi-run rule edit");
-            doc.Export(output,new HashSet<int>{0,1},false);
+            foreach(var item in doc.Items.Skip(2).Take(2)){
+                bool rejected=false;
+                try{item.SetFragment(0,"The lamp was warm. The panel was dry");}catch(InvalidDataException){rejected=true;}
+                Check(rejected && item.Suggested==item.Text,"native reference scope protected on manual edit");
+                item.SetFragment(0,claim.Replace("was warm","felt warm"));
+            }
+            doc.Export(output,new HashSet<int>{0,1,2,3},false);
             var actual=Manuscript.Parse(Read(output)["word/document.xml"]);
             body.Elements(w+"p").Skip(1).First().Descendants(w+"t").Last().Value="to measure drift.";
+            foreach(var p in body.Elements(w+"p").Skip(2).Take(2))p.Descendants(w+"t").First().Value=claim.Replace("was warm","felt warm");
             Check(XNode.DeepEquals(xml.Root,actual.Root),"only confirmed text changes in multi-run roundtrip");
         }finally{File.Delete(input);File.Delete(output);}
     }
@@ -194,6 +209,8 @@ class Regression {
                 Check(rejected,"protected scientific detail: "+example[0]);
             }
             foreach (var safe in new[] {
+                new[]{"探头在 21.5 °C 工作[4]。随后读取电压。","在 21.5 °C 时探头工作[4]。随后读取电压。"},
+                new[]{"The bracket held [4; 7]. The spring moved.","The bracket remained fixed [4; 7]. The spring moved."},
                 new[]{"需要检验滤波器是否能够分辨两组信号。","需检验滤波器能否分辨两组信号。"},
                 new[]{"We examined whether or not the estimates differed.","We examined whether the estimates differed."},
                 new[]{"本研究提出三项待验证的假设。","本研究提出三项待检验的假设。"},
@@ -224,6 +241,9 @@ class Regression {
                 Check(invalidModel,"reject empty or nonlocal selector");
             }
             var changesOfMeaning = new[] {
+                new[]{"支架保持静止[4]。弹簧出现形变。","支架保持静止。弹簧出现形变[4]。"},
+                new[]{"The bracket held [4]. The spring moved.","The bracket held. The spring moved [4]."},
+                new[]{"支架保持静止［4］；弹簧出现形变［7］。","支架保持静止；弹簧出现形变［4］［7］。"},
                 new[]{"研究将检验两组读数是否一致。","研究发现两组读数一致。"},
                 new[]{"研究将检验两组读数是否一致。","研究将检验两组读数是否能够一致。"},
                 new[]{"这项试验考察滤波器能否分辨信号。","这项试验表明滤波器能分辨信号。"},

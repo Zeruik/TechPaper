@@ -42,11 +42,29 @@ internal static class Services {
         return String.Format("模型版本  {0}\r\n预测类别  {1}\r\n\r\n人工写作  {2:P1}\r\nAI 生成  {3:P1}\r\n混合写作  {4:P1}\r\n\r\n数值为整篇分类的概率，不能换算为 AI 写作字数占比。",
             response.ContainsKey("version")?response["version"]:"服务未提供",doc["predicted_class"],Convert.ToDouble(scores["human"]),Convert.ToDouble(scores["ai"]),Convert.ToDouble(scores["mixed"]));
     }
+    const string citation = @"[\[［【]\s*\d+(?:\s*[,，、;；\-–—]\s*\d+)*\s*[\]］】]";
+    static readonly Regex citationEvents=new Regex("(?<ref>"+citation+@")|[。！？!?；;]+|\.(?=\s|$|[\[［【])");
+    static IEnumerable<int> CitationClauses(string text){
+        int clause=0,firstContent=0;
+        while(firstContent<text.Length && Char.IsWhiteSpace(text[firstContent]))firstContent++;
+        foreach(Match item in citationEvents.Matches(text)){
+            if(item.Groups["ref"].Success){
+                yield return clause*2+(firstContent==item.Index?1:0);
+            }else{
+                clause++;firstContent=item.Index+item.Length;
+                while(firstContent<text.Length && Char.IsWhiteSpace(text[firstContent]))firstContent++;
+            }
+        }
+    }
+    internal static void ValidateCitationScope(string text,string updated){
+        if((text.Contains("[") || text.Contains("［") || text.Contains("【")) &&
+           !CitationClauses(text).SequenceEqual(CitationClauses(updated)))
+            throw new InvalidDataException("引用所在的句子或分号分隔的论断发生变化，请核对引用归属。");
+    }
     internal static void ValidateRevision(string text,string updated) {
         const string number = @"[+\-−±]?\d+(?:[.,]\d+)*(?:[eE][+\-]?\d+)?";
         const string unit = @"(?:(?:[fpnμµumkM]?mol/(?:mL|L))|[fpnμµum]?M|m/s²|m/s|mm²|cm²|m²|mm³|cm³|m³|kPa|MPa|Pa|kHz|MHz|Hz|mm|cm|km|kg|mg|μg|µg|mL|ms|μs|µs|min|mol|m|g|L|s|h|K|V|A|W)(?![A-Za-z])|%|‰|℃|°[CF]|毫米|厘米|千米|千克|毫克|分钟|小时|摄氏度|毫升|秒";
         string measurement = number + @"(?:\s*(?:" + unit + @"))?";
-        const string citation = @"[\[［【]\s*\d+(?:\s*[,，、;；\-–—]\s*\d+)*\s*[\]］】]";
         const string qualifier = @"不能|无法|尚未|并未|未能|未见|没有|并非|不显著|不确定|可能|仅限|\b(?i:not|no|never|cannot|may|might|only)\b";
         const string group = @"(?:样品|试样|材料|样本|试剂|方案|条件)\s*[甲乙丙丁A-Z](?![A-Za-z])|(?:实验|对照|处理|干预|基线|安慰剂|空白|观察|治疗)组|(?:组\s*[A-Z甲乙丙丁]|[A-Z甲乙丙丁]\s*组)|\b(?i:(?:group|arm)\s+[a-z0-9]+|control|treatment|placebo|intervention)\b";
         const string direction = @"高于|低于|小于|大于|超过|优于|劣于|上升|下降|增加|减少|升高|降低|正相关|负相关|提示|证明|证实|必然|显著|未|不|无|\b(?i:higher|lower|greater|less|more|increase[d]?|decrease[d]?|suggests?|proves?|confirms?|significant(?:ly)?|must)\b";
@@ -76,6 +94,7 @@ internal static class Services {
                 throw new InvalidDataException("修订改变了中文计数，请核对假设、条件、分组或重复次数。");
             throw new InvalidDataException("修订可能改变了观测量、数值、单位、引文、组别、比较方向、相关与因果表述、结论限定词或段落结构。请逐段核对。");
         }
+        ValidateCitationScope(text,updated);
         var repeated=Regex.Split(updated,@"[。！？!?]|\.(?=\s|$)").Select(s=>s.Trim())
             .Where(s=>s.Length>=12).GroupBy(s=>s).Where(g=>g.Count()>1);
         foreach(var groupOfSentences in repeated){
@@ -165,6 +184,7 @@ internal static class Services {
         var result=(string[])passage.Revisions.Clone();
         if(nodes.Length==1){
             result[0]=PolishForBatch(nodes[0].Value,model,instruction,cancel);
+            passage.ValidateInlineReferences(result);
             return result;
         }
         var properties=new Dictionary<string,object>();
@@ -199,6 +219,7 @@ internal static class Services {
             result[i]=edited;
         }
         ValidateRevision(passage.Text,String.Concat(result));
+        passage.ValidateInlineReferences(result);
         return result;
     }
     static string EdgePunctuation(string value,bool start){

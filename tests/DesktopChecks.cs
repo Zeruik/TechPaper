@@ -27,7 +27,7 @@ class DesktopChecks {
             new XElement(w+"r",new XElement(w+"rPr",new XElement(w+"vertAlign",new XAttribute(w+"val","superscript"))),new XElement(w+"t","[7]")),
             new XElement(w+"r",new XElement(w+"t",right))),Revisions=new[]{left,"[7]",right}};
         var json=new JavaScriptSerializer();
-        foreach(string mode in new[]{"valid","punctuation","protected","missing"}){
+        foreach(string mode in new[]{"valid","punctuation","protected","missing","splitClaim"}){
             var task=Task.Run(()=>Services.PolishParagraph(passage,"fixture","",CancellationToken.None));
             var request=server.GetContextAsync();Pump(()=>request.IsCompleted);
             var ctx=request.Result;
@@ -41,6 +41,7 @@ class DesktopChecks {
             if(mode=="punctuation"){values["run0"]+=".";values["run2"]=right.Substring(2);}
             if(mode=="protected")values["run1"]="[8]";
             if(mode=="missing")values.Remove("run2");
+            if(mode=="splitClaim")values["run0"]="We repeated the reading. We then estimated drift";
             var answer=Encoding.UTF8.GetBytes(json.Serialize(new{message=new{content=json.Serialize(values)}}));
             ctx.Response.ContentLength64=answer.Length;ctx.Response.Close(answer,false);
             Pump(()=>task.IsCompleted);

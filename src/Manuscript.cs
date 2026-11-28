@@ -23,7 +23,24 @@ internal sealed class Passage {
         revised[index]=value;
         string suggested=String.Concat(revised);
         if(nodes.Length>1)Services.ValidateRevision(Text,suggested);
+        ValidateInlineReferences(revised);
         Revisions=revised;Suggested=suggested;
+    }
+    internal void ValidateInlineReferences(string[] revised){
+        var w=Manuscript.W;
+        var original=new StringBuilder();var proposed=new StringBuilder();
+        int index=0;bool hasAnchor=false;
+        foreach(var node in Paragraph.Descendants()){
+            bool isText=node.Name==w+"t";
+            if(!isText && node.Name!=w+"footnoteReference" && node.Name!=w+"endnoteReference")continue;
+            bool anchor=!isText || FieldText.Contains(node) ||
+                (Regex.IsMatch(node.Value,@"^\s*[0-9]+\s*$") &&
+                 node.Parent.Elements(w+"rPr").Elements(w+"vertAlign").Any(a=>(string)a.Attribute(w+"val")=="superscript"));
+            if(anchor){original.Append("[0]");proposed.Append("[0]");hasAnchor=true;}
+            else{original.Append(node.Value);proposed.Append(revised[index]);}
+            if(isText)index++;
+        }
+        if(hasAnchor)Services.ValidateCitationScope(original.ToString(),proposed.ToString());
     }
     internal XElement[] Nodes { get { return Paragraph.Descendants(Manuscript.W+"t").ToArray(); } }
     internal bool CanChange(XElement n) {

@@ -121,6 +121,15 @@ class InstalledPolish {
             Reply(request,new{message=new{content=Json.Serialize(edits)}});
             Wait(()=>batch.IsCompleted);batch.GetAwaiter().GetResult();
             Require(rows.Items[cited].SubItems[3].Text=="模型建议" && !rows.Items[cited].Checked,"suggestion missing");
+            var drifted=new Dictionary<string,string>(edits);
+            drifted[key]="仪器已经就位。"+edits[key];
+            batch=(Task)start.Invoke(form,new object[]{new[]{cited},"fixture"});
+            Reply(Receive(server,"/api/show"),new{model_info=new{fixture=true}});
+            Reply(Receive(server,"/api/chat"),new{message=new{content=Json.Serialize(drifted)}});
+            Wait(()=>batch.IsCompleted);batch.GetAwaiter().GetResult();
+            Require(rows.Items[cited].SubItems[3].Text=="保留先前建议" && rows.Items[cited].ToolTipText.Contains("引用所在"),
+                "workspace did not preserve a previous suggestion on citation drift");
+            Console.WriteLine("PASS installed citation scope warning preserves earlier suggestion");
             batch=(Task)start.Invoke(form,new object[]{new[]{cited},"fixture"});
             Reply(Receive(server,"/api/show"),new{model_info=new{fixture=true}});
             Receive(server,"/api/chat");

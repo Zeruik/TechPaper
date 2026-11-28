@@ -209,6 +209,9 @@ class Regression {
                 Check(rejected,"protected scientific detail: "+example[0]);
             }
             foreach (var safe in new[] {
+                new[]{"在偏心加载时，读数为 1.7 mm。","偏心加载时记录到 1.7 mm。"},
+                new[]{"During unloading the gauge read 3 mm.","During unloading, the gauge registered 3 mm."},
+                new[]{"正接时探头读数为 0.7 V。","正接时探头显示 0.7 V。"},
                 new[]{"为便于后续核对，记录员给记录编号。","记录员给记录编号，以便后续核对。"},
                 new[]{"探头在 21.5 °C 工作[4]。随后读取电压。","在 21.5 °C 时探头工作[4]。随后读取电压。"},
                 new[]{"The bracket held [4; 7]. The spring moved.","The bracket remained fixed [4; 7]. The spring moved."},
@@ -242,6 +245,11 @@ class Regression {
                 Check(invalidModel,"reject empty or nonlocal selector");
             }
             var changesOfMeaning = new[] {
+                new[]{"正接时读数为 +1.7 V，反接时为 −0.4 V。","反接时读数为 +1.7 V，正接时为 −0.4 V。"},
+                new[]{"加载时位移为 0.8 mm，卸载时为 0.2 mm。","卸载时位移为 0.8 mm，加载时为 0.2 mm。"},
+                new[]{"对中加载时读数为 1.7 mm，偏心加载时为 0.4 mm。","偏心加载时读数为 1.7 mm，对中加载时为 0.4 mm。"},
+                new[]{"During loading the gauge read 3 mm; during unloading it read 1 mm.","During unloading the gauge read 3 mm; during loading it read 1 mm."},
+                new[]{"Under eccentric loading the gauge read 3 mm.","Under concentric loading the gauge read 3 mm."},
                 new[]{"为便于进行后续的核对，记录员对每份记录都进行了编号。","记录员对每份记录进行了编号。"},
                 new[]{"支架保持静止[4]。弹簧出现形变。","支架保持静止。弹簧出现形变[4]。"},
                 new[]{"The bracket held [4]. The spring moved.","The bracket held. The spring moved [4]."},

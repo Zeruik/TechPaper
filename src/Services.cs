@@ -15,7 +15,7 @@ internal static class Services {
         "先辨认段落的任务，再决定是否需要改：研究动机保留问题与缺口；假设保留编号、条件和预测；方法保留对象、变量、对照与步骤；结果保留比较双方、观测值和方向；讨论区分观测、解释和局限。\n"+
         "改写时先找清主语、动作和对象，把限定语放回对应主张附近。删去没有信息的开场和重复表达，能直接说的动作就用动词。长句可在同一段内分句，并列事项保持原顺序。必要时保留专业术语的重复；无需为了换词而改写清楚的句子。\n"+
         "编号、工况代号、人名、仪器名、引文及其对应主张保持原样。保留正负号、小数、百分号、单位、参照系，以及先后、否定、可能性和适用条件。不要把相关改成因果、把假设改成发现，或把相对位移说成绝对位移。\n"+
-        "维持原有叙述人称和证据强度。不得补写采集数据、重复实验、显著性或实际用途。简短的引导句维持简短。不得增添总结或重复输出段落。原文已清楚时原样返回。作者的偏好仅用于措辞。";
+        "维持原有叙述人称和证据强度。不得补写采集数据、重复实验、显著性或实际用途。简短的引导句维持简短。不得增添总结或重复输出段落。原文已清楚时原样返回。写结果段时，把每个读数连同对应工况一起核对，例如加载和卸载时的两次位移。作者的偏好仅用于措辞。";
     internal static readonly string[] PolicyChoices={"标准","扩展","扩展（双引文示例）"};
     internal static string SelectedPolicy(int choice){
         if(choice!=1 && choice!=2)return EditorialPolicy;
@@ -91,12 +91,16 @@ internal static class Services {
         const string question=@"(?<abilityQuestion>能否|可否|是否(?:能够|可以|能))|(?<openQuestion>是否|\b(?i:whether(?: or not)?)\b)";
         const string purpose=@"为(?:了)?便于|以便(?:于)?|以方便|便于|旨在|目的是|为了";
         const string counted=@"(?<chineseCount>[零一二两三四五六七八九十百千万]+(?:项|组|种|次|类|处|份))";
-        string anchors = "(?:"+citation+"|"+identifier+"|"+measurement+"|"+quantity+"|"+question+"|"+counted+"|"+qualifier+"|"+group+"|"+relation+"|"+direction+"|"+comparison+"|"+association+"|"+causation+")";
+        const string condition=@"(?<eccentricLoad>偏心加载|\b(?i:eccentric loading)\b)|(?<centeredLoad>对中加载|\b(?i:concentric loading)\b)|"+
+            @"(?<loading>加载|\b(?i:loading)\b)|(?<unloading>卸载|\b(?i:unloading)\b)|正接|反接";
+        string anchors = "(?:"+citation+"|"+identifier+"|"+measurement+"|"+quantity+"|"+question+"|"+counted+"|"+condition+"|"+qualifier+"|"+group+"|"+relation+"|"+direction+"|"+comparison+"|"+association+"|"+causation+")";
         if (String.IsNullOrWhiteSpace(updated) || updated.Contains("\n") || updated.Contains("\r") ||
             updated.Length > text.Length * 2 + 24 ||
             !ProtectedTokens(text,measurement).SequenceEqual(ProtectedTokens(updated,measurement)) ||
             !ProtectedTokens(text,citation).SequenceEqual(ProtectedTokens(updated,citation)) ||
             !ProtectedTokens(text,anchors).SequenceEqual(ProtectedTokens(updated,anchors))){
+            if(!ProtectedTokens(text,condition).SequenceEqual(ProtectedTokens(updated,condition)))
+                throw new InvalidDataException("接线方式或加载工况发生变化，请核对每个读数对应的工况。");
             if(!ProtectedTokens(text,quantity).SequenceEqual(ProtectedTokens(updated,quantity)))
                 throw new InvalidDataException("修订改变了温度变化、温差或位移参照方式的表述。请核对原文测量的是什么。");
             if(!ProtectedTokens(text,question).SequenceEqual(ProtectedTokens(updated,question)))
@@ -125,7 +129,7 @@ internal static class Services {
                 return Regex.Replace(m.Value,@"\s+","");
             });
     }
-    static readonly string[] normalizedAnchors={"association","causation","temperatureChange","temperatureDifference","relativeDisplacement","absoluteDisplacement","openQuestion","abilityQuestion"};
+    static readonly string[] normalizedAnchors={"association","causation","temperatureChange","temperatureDifference","relativeDisplacement","absoluteDisplacement","openQuestion","abilityQuestion","eccentricLoad","centeredLoad","loading","unloading"};
     internal static string[] ListLocalModels() {
         var req=(HttpWebRequest)WebRequest.Create("http://127.0.0.1:11434/api/tags");
         req.Proxy=null;

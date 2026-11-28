@@ -1,4 +1,4 @@
-﻿TechPaper 0.9.0-preview.13 使用说明与隐私条款
+﻿TechPaper 0.9.0-preview.14 使用说明与隐私条款
 
 TechPaper 的源码、Logo 和随附文档按随软件提供的 MIT 许可证发布。MIT 许可允许使用、修改和再分发，分发时应保留版权与许可声明。完整英文许可见 LICENSE。
 

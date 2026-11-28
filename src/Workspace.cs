@@ -59,7 +59,7 @@ internal sealed partial class Workspace : Form {
     RichTextBox CompareBox(){return new RichTextBox{ReadOnly=true,DetectUrls=false,Dock=DockStyle.Fill,BorderStyle=BorderStyle.FixedSingle};}
     TextBox Box(){return new TextBox{ReadOnly=true,Multiline=true,ScrollBars=ScrollBars.Vertical,Dock=DockStyle.Fill,BackColor=Color.White,BorderStyle=BorderStyle.FixedSingle};}
     Button ButtonAt(string label,EventHandler handler){var b=new Button{Text=label,AutoSize=true,Height=36,FlatStyle=FlatStyle.Flat,BackColor=Color.White,Padding=new Padding(8,0,8,0)};b.FlatAppearance.BorderColor=Color.Silver;b.Click+=handler;return b;}
-    void EnableActions(){open.Enabled=!busy;rows.Enabled=!busy;save.Enabled=cloud.Enabled=model.Enabled=doc!=null&&!busy;if(reportAction!=null) reportAction.Enabled=activeFile!=null&&!busy;}
+    void EnableActions(){open.Enabled=!busy;rows.Enabled=!busy;save.Enabled=cloud.Enabled=model.Enabled=doc!=null&&!busy;if(reportAction!=null) reportAction.Enabled=(doc!=null||activeFile!=null)&&!busy;}
     async void Run(Func<Task> work){if(busy)return;busy=true;EnableActions();try{await work();}catch(Exception ex){status.Text="操作未完成";MessageBox.Show(this,ex.Message,Text,MessageBoxButtons.OK,MessageBoxIcon.Information);}finally{busy=false;EnableActions();}}
     void Choose(object s,EventArgs e){using(var d=new OpenFileDialog{Filter="支持的文档和图片|*.docx;*.pptx;*.pdf;*.png;*.jpg;*.jpeg"})if(d.ShowDialog(this)==DialogResult.OK)LoadFile(d.FileName);}
     internal void LoadFile(string path){Run(async delegate{
@@ -73,12 +73,14 @@ internal sealed partial class Workspace : Form {
             if(!ex.Message.Contains("160 MB"))throw;
             doc=null;activeFile=path;rows.Items.Clear();before.Clear();after.Clear();file.Text=Path.GetFileName(path);summary.Text="长文报告模式";status.Text=ex.Message+" 可使用流式高亮报告。";return;
         }
-        doc=loaded;activeFile=Path.GetFullPath(path);
-        file.Text=Path.GetFileName(path);rows.BeginUpdate();rows.Items.Clear();
+        ShowManuscript(loaded);});}
+    void ShowManuscript(Manuscript loaded){
+        doc=loaded;activeFile=doc.Source;
+        file.Text=activeFile==null?"粘贴的文本":Path.GetFileName(activeFile);rows.BeginUpdate();rows.Items.Clear();
         foreach(var p in doc.Items){int n=rows.Items.Count;var row=new ListViewItem("");row.SubItems.AddRange(new[]{(n+1).ToString(),p.Reason,p.Editable?(p.Text==p.Suggested?"原样":"建议精简"):"结构保护",p.Text});rows.Items.Add(row);row.Checked=false;}
         rows.EndUpdate();if(rows.Items.Count>0)rows.Items[0].Selected=true;Preview();
         summary.Text=String.Format("正文段落 {0}    ·    有文风提示 {1}    ·    初始修订建议 {2}",doc.Items.Count,doc.Items.Count(p=>p.Reason!="—"),doc.Items.Count(p=>p.Text!=p.Suggested));
-        status.Text="勾选要采用的修订后导出。文风提示仅供复核。";});}
+        status.Text="勾选要采用的修订后导出。文风提示仅供复核。";}
     int Selected(){return rows.SelectedIndices.Count==0?-1:rows.SelectedIndices[0];}
     void Preview(){
         int n=Selected();
@@ -127,7 +129,7 @@ internal sealed partial class Workspace : Form {
         box.SelectionColor=Color.FromArgb(40,35,25);
         box.Select(start,0);
     }
-    void Export(object s,EventArgs e){using(var d=new SaveFileDialog{Filter="Word 文档|*.docx",FileName=Path.GetFileNameWithoutExtension(doc.Source)+"-审阅稿.docx",InitialDirectory=Path.GetDirectoryName(doc.Source)}){
+    void Export(object s,EventArgs e){using(var d=new SaveFileDialog{Filter="Word 文档|*.docx",FileName=(Path.GetFileNameWithoutExtension(doc.Source)??"粘贴文本")+"-审阅稿.docx",InitialDirectory=Path.GetDirectoryName(doc.Source)??""}){
         if(d.ShowDialog(this)!=DialogResult.OK)return;var path=d.FileName;bool scrub=clean.Checked;
         bool removeReview=false;
         try{if(scrub && !ConfirmPrivacy(out removeReview))return;}

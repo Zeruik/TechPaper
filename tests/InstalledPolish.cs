@@ -133,6 +133,31 @@ class InstalledPolish {
                 Require(source.SequenceEqual(File.ReadAllBytes(input)),"source changed");
             }finally{if(File.Exists(output))File.Delete(output);}
             CheckSplitThreshold(form,server,input);
+            using(var timer=new System.Windows.Forms.Timer{Interval=50}){
+                timer.Tick+=(s,e)=>{
+                    var dlg=Application.OpenForms.Cast<Form>().SingleOrDefault(d=>d.Text=="粘贴文本并自动分段");
+                    if(dlg==null)return;
+                    timer.Stop();
+                    dlg.Controls.OfType<TextBox>().Single().Text="H1（温度）：在研究的过程中，我们记录了室温[2]。 H2（时间）：在相同的条件下记录响应时间。";
+                    var ok=dlg.Controls.OfType<Button>().Single();
+                    Require(ok.Text=="导入 2 段","paste count");
+                    ok.PerformClick();
+                };
+                timer.Start();type.GetMethod("PasteParagraphs",Fields).Invoke(form,null);
+                Wait(()=>rows.Items.Count==2 && rows.Items[0].SubItems[4].Text.StartsWith("H1"));
+            }
+            Require(rows.CheckedIndices.Count==0,"pasted paragraphs already selected");
+            rows.Items[0].Checked=true;
+            try{
+                var pasted=(Task<int>)type.GetMethod("WriteCopy",Fields).Invoke(form,new object[]{output,false,false});
+                Wait(()=>pasted.IsCompleted);Require(pasted.Result==1,"paste adoption count");
+                using(var zip=ZipFile.OpenRead(output)){
+                    var body=Body(zip);var w=body.Root.Name.Namespace;
+                    var paragraphs=body.Descendants(w+"p").Select(p=>p.Value).ToArray();
+                    Require(paragraphs.SequenceEqual(new[]{"H1（温度）：在研究中，我们记录了室温[2]。 ","H2（时间）：在相同的条件下记录响应时间。"}),"paste export mismatch");
+                }
+            }finally{if(File.Exists(output))File.Delete(output);}
+            Console.WriteLine("PASS installed paste dialog, automatic segmentation and selective export");
         }
         Console.WriteLine("PASS installed paragraph context, stop, confirmed selection and citation roundtrip");
     }

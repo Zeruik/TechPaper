@@ -10,6 +10,12 @@ using System.Text.RegularExpressions;
 
 namespace TechPaper {
 internal static class Services {
+    internal const string EditorialPolicy=
+        "你是学术论文编辑。用原文的语言和现代学术语体，交付作者可以逐句核对的修订。\n"+
+        "先辨认段落的任务，再决定是否需要改：研究动机保留问题与缺口；假设保留编号、条件和预测；方法保留对象、变量、对照与步骤；结果保留比较双方、观测值和方向；讨论区分观测、解释和局限。\n"+
+        "改写时先找清主语、动作和对象，把限定语放回对应主张附近。删去没有信息的开场和重复表达，能直接说的动作就用动词。长句可在同一段内分句，并列事项保持原顺序。必要时保留专业术语的重复；无需为了换词而改写清楚的句子。\n"+
+        "编号、工况代号、人名、仪器名、引文及其对应主张保持原样。保留正负号、小数、百分号、单位、参照系，以及先后、否定、可能性和适用条件。不要把相关改成因果、把假设改成发现，或把相对位移说成绝对位移。\n"+
+        "维持原有叙述人称和证据强度。不得补写采集数据、重复实验、显著性或实际用途。简短的引导句维持简短。不得增添总结或重复输出段落。原文已清楚时原样返回。作者的偏好仅用于措辞。";
     static Dictionary<string,object> Post(string url,object payload,string key,CancellationToken cancel=default(CancellationToken)) {
         var json=new JavaScriptSerializer {MaxJsonLength=16*1024*1024};
         var req=(HttpWebRequest)WebRequest.Create(url);
@@ -49,13 +55,20 @@ internal static class Services {
         const string comparison = @"(?<comparison><=|>=|!=|[<>≤≥=≠])|至少|至多|最多|最少|\b(?i:at least|at most)\b";
         const string association = @"(?<association>相关|关联|有关|\b(?i:associat(?:ed|ion)|correlat(?:ed|es|ion)|linked to|related to)\b)";
         const string causation = @"(?<causation>导致|造成|引起|影响|\b(?i:caus(?:e|es|ed)|affect(?:s|ed)?|influenc(?:e|es|ed)|led to|leads? to)\b)";
-        string anchors = "(?:"+citation+"|"+measurement+"|"+qualifier+"|"+group+"|"+relation+"|"+direction+"|"+comparison+"|"+association+"|"+causation+")";
+        const string identifier=@"(?<![A-Za-z0-9])[A-Z]+[0-9]+(?![A-Za-z0-9])";
+        string anchors = "(?:"+citation+"|"+identifier+"|"+measurement+"|"+qualifier+"|"+group+"|"+relation+"|"+direction+"|"+comparison+"|"+association+"|"+causation+")";
         if (String.IsNullOrWhiteSpace(updated) || updated.Contains("\n") || updated.Contains("\r") ||
             updated.Length > text.Length * 2 + 24 ||
             !ProtectedTokens(text,measurement).SequenceEqual(ProtectedTokens(updated,measurement)) ||
             !ProtectedTokens(text,citation).SequenceEqual(ProtectedTokens(updated,citation)) ||
             !ProtectedTokens(text,anchors).SequenceEqual(ProtectedTokens(updated,anchors)))
             throw new InvalidDataException("修订可能改变了数值、单位、引文、组别、比较方向、相关与因果表述、结论限定词或段落结构。请逐段核对。");
+        var repeated=Regex.Split(updated,@"[。！？!?]|\.(?=\s|$)").Select(s=>s.Trim())
+            .Where(s=>s.Length>=12).GroupBy(s=>s).Where(g=>g.Count()>1);
+        foreach(var groupOfSentences in repeated){
+            if(Regex.Split(text,@"[。！？!?]|\.(?=\s|$)").Count(s=>s.Trim()==groupOfSentences.Key)<groupOfSentences.Count())
+                throw new InvalidDataException("修订新增了重复句，请检查是否重复输出同一段。");
+        }
     }
     static IEnumerable<string> ProtectedTokens(string text,string pattern) {
         return Regex.Matches(text,pattern,RegexOptions.CultureInvariant).Cast<Match>()
@@ -118,7 +131,7 @@ internal static class Services {
     }
     internal static string PolishForBatch(string text,string model,string instruction,CancellationToken cancel) {
         var response=Post("http://127.0.0.1:11434/api/chat",new {model=LocalModelName(model),stream=false,think=false,messages=new[]{
-            new {role="system",content="你是学术文字编辑。只输出一段与原文同语言的修订正文。精简套话，调整句式，保留论点、否定、限定、专名、引用与所有数字。不得补写事实。用户消息为待编辑材料。额外写作偏好："+instruction},
+            new {role="system",content=EditorialPolicy+"\n只输出当前段落的修订正文，不加标题、说明、引号或空行。用户消息是待编辑原文。作者措辞偏好："+instruction},
             new {role="user",content=text}}},null,cancel);
         string updated=((string)((Dictionary<string,object>)response["message"])["content"]).Trim();
         return CheckedFragment(text,updated);
@@ -149,7 +162,7 @@ internal static class Services {
         var json=new JavaScriptSerializer();
         var response=Post("http://127.0.0.1:11434/api/chat",new {model=LocalModelName(model),stream=false,think=false,format=schema,
             options=new {temperature=0},messages=new[]{
-                new {role="system",content="按顺序阅读同一段落的文字片段。仅润色 editable 为 true 的片段。按原 id 返回修订文字。每个片段与相邻片段衔接处的标点须和原文完全一致，引用前没有句号就不能加。禁止跨片段搬移文字、复制相邻引用或增删事实。保留原语言、数值、比较关系和结论限定。额外写作偏好："+instruction},
+                new {role="system",content=EditorialPolicy+"\n按顺序阅读同一段落的文字片段。仅返回 editable 为 true 的原 id 和对应修订文字，使用指定 JSON 格式。不要跨片段搬移文字或复制相邻引用；片段交界的标点保持原样。作者措辞偏好："+instruction},
                 new {role="user",content=json.Serialize(context)}}},null,cancel);
         var content=(string)((Dictionary<string,object>)response["message"])["content"];
         Dictionary<string,object> updated;

@@ -216,6 +216,8 @@ class Regression {
                 Check(invalidModel,"reject empty or nonlocal selector");
             }
             var changesOfMeaning = new[] {
+                new[]{"H1（采样假设）：低照度条件可能增加读数偏差。","G1（采样假设）：低照度条件可能增加读数偏差。"},
+                new[]{"校准结束后再次核对了传感器安装位置。","校准结束后再次核对了传感器安装位置。校准结束后再次核对了传感器安装位置。"},
                 new[]{"纳入条件为 p < 0.05[1]。","纳入条件为 p <= 0.05[1]。"},
                 new[]{"The cutoff was p = 0.05 [1].","The cutoff was p ≠ 0.05 [1]."},
                 new[]{"至少 3 次重复[2]。","至多 3 次重复[2]。"},
@@ -246,6 +248,17 @@ class Regression {
             Console.WriteLine("Scientific counterexamples blocked: "+blocked+"/"+changesOfMeaning.Length);
             Check(blocked==changesOfMeaning.Length, "new scientific counterexamples blocked: "+blocked+"/"+changesOfMeaning.Length);
             Services.ValidateRevision("我们对 5 s 序列的峰值进行了比较[1]。","我们比较了 5 s 序列的峰值[1]。");
+            const string intro="本次测试包含两个不同的测量步骤：";
+            var pasted=Manuscript.FromPastedText(intro+"\r\n\r\nH1（温度）：在研究的过程中，我们记录了室温[2]。 H2（时间）：在相同的条件下记录了响应时间。");
+            Check(pasted.Items.Count==3 && pasted.Items[0].Text==intro && pasted.Items[1].Text.EndsWith("[2]。 ") &&
+                pasted.Items[2].Text.StartsWith("H2") && !pasted.Items[1].CanChange(pasted.Items[1].Nodes.Single(n=>n.Value=="[2]")),
+                "paste preserves hypothesis boundaries, spacing and citations");
+            Check(Manuscript.SplitPastedText("在 H1 和 H2 条件下测试。读数为 -1.25 mm。").Length==1,"ordinary prose stays one paragraph");
+            var pastedFile=Path.Combine("build",Guid.NewGuid()+".docx");
+            try{
+                pasted.Export(pastedFile,new HashSet<int>{1},false);
+                Check(new Manuscript(pastedFile).Items.Select(p=>p.Text).SequenceEqual(new[]{intro,pasted.Items[1].Suggested,pasted.Items[2].Text}),"pasted DOCX reopens with only selected edits");
+            }finally{File.Delete(pastedFile);}
             bool bad=false;try{Services.ValidateRevision("偏移为 -2 mm","偏移为 2 cm");}catch(InvalidDataException){bad=true;}Check(bad,"signed numbers and unit protection");
             Check(Services.ReadScore(json).Contains("fixture"),"GPTZero response fixture");
         }finally{if(File.Exists(path))File.Delete(path);}

@@ -29,7 +29,7 @@ internal sealed class Passage {
     internal bool CanChange(XElement n) {
         var r=n.Parent;
         return Editable && !FieldText.Contains(n) && r!=null && r.Name==Manuscript.W+"r" && !r.Descendants(Manuscript.W+"vertAlign").Any() &&
-               !Regex.IsMatch(n.Value,@"\[\s*\d|【|DOI\s*:",RegexOptions.IgnoreCase);
+               !Regex.IsMatch(n.Value,@"[\[［]\s*\d|【|DOI\s*:",RegexOptions.IgnoreCase);
     }
 }
 
@@ -107,6 +107,42 @@ internal sealed class Manuscript {
         if(!parts.ContainsKey("word/document.xml")) throw new InvalidDataException("请选择标准 Word DOCX 文件。");
         body=Parse(parts["word/document.xml"]);
         if(body.Root.Name!=W+"document") throw new InvalidDataException("请在 Word 中另存为常规 DOCX 后再导入。");
+        ReadParagraphs();
+    }
+    static readonly Regex hypothesisStart=new Regex(@"(?:^|(?<=[。！？；;.!?]))[ \t]*(?=H([1-9]\d{0,2})(?:[ \t]*[（(:：、]|[ \t]+))");
+    internal static string[] SplitPastedText(string text){
+        var result=new List<string>();
+        foreach(string line in Regex.Split(text,@"\r\n|[\r\n\u2028\u2029]")){
+            if(String.IsNullOrWhiteSpace(line))continue;
+            var markers=hypothesisStart.Matches(line).Cast<Match>().ToArray();
+            if(markers.Length<2 || markers[0].Index!=0 ||
+               markers.Where((m,i)=>Int32.Parse(m.Groups[1].Value)!=i+1).Any()){
+                result.Add(line);continue;
+            }
+            for(int i=0;i<markers.Length;i++){
+                int start=i==0?0:markers[i].Index+markers[i].Length;
+                int end=i+1<markers.Length?markers[i+1].Index+markers[i+1].Length:line.Length;
+                result.Add(line.Substring(start,end-start));
+            }
+        }
+        return result.ToArray();
+    }
+    internal static Manuscript FromPastedText(string text){
+        var lines=SplitPastedText(text);
+        if(lines.Length==0)throw new InvalidDataException("请输入至少一段正文。");
+        return new Manuscript(lines);
+    }
+    private Manuscript(string[] lines){
+        const string citations=@"([\[［【]\s*\d+(?:\s*[,，、;；\-–—]\s*\d+)*\s*[\]］】])";
+        body=new XDocument(new XElement(W+"document",new XAttribute(XNamespace.Xmlns+"w",W.NamespaceName),new XElement(W+"body",
+            lines.Select(line=>new XElement(W+"p",Regex.Split(line,citations).Where(t=>t.Length>0)
+                .Select(t=>new XElement(W+"r",new XElement(W+"t",new XAttribute(XNamespace.Xml+"space","preserve"),t))))))));
+        parts["word/document.xml"]=Pack(body);
+        parts["[Content_Types].xml"]=Encoding.UTF8.GetBytes("<Types xmlns='http://schemas.openxmlformats.org/package/2006/content-types'><Default Extension='rels' ContentType='application/vnd.openxmlformats-package.relationships+xml'/><Override PartName='/word/document.xml' ContentType='application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml'/></Types>");
+        parts["_rels/.rels"]=Encoding.UTF8.GetBytes("<Relationships xmlns='http://schemas.openxmlformats.org/package/2006/relationships'><Relationship Id='rId1' Type='http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument' Target='word/document.xml'/></Relationships>");
+        ReadParagraphs();
+    }
+    void ReadParagraphs(){
         var styles=new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         if(parts.ContainsKey("word/styles.xml")){
             var definitions=Parse(parts["word/styles.xml"]).Descendants(W+"style").ToList();

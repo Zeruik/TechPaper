@@ -25,15 +25,21 @@ internal sealed partial class Workspace {
         reportAction=ButtonAt("导出高亮报告",Report);head.Controls.Add(reportAction);
         var more=ButtonAt("设置与说明 ▾",(s,e)=>{});head.Controls.Add(more);
         var menu=new ContextMenuStrip();
+        menu.Items.Add("粘贴文本并自动分段…",null,(s,e)=>PasteParagraphs());
         menu.Items.Add("编辑当前段安全片段…",null,(s,e)=>EditFragments());
         rows.DoubleClick+=(s,e)=>EditFragments();
         menu.Items.Add("选择本地比对语料 (.txt)…",null,(s,e)=>{using(var d=new OpenFileDialog{Filter="UTF-8 文本|*.txt"})if(d.ShowDialog(this)==DialogResult.OK){corpus=d.FileName;status.Text="本地比对语料："+Path.GetFileName(corpus);}});
         menu.Items.Add("清除本地语料",null,(s,e)=>{corpus=null;status.Text="已清除比对语料。";});
+        menu.Items.Add("查看内置润色提示词…",null,(s,e)=>{
+            using(var dlg=new Form{Text="内置润色提示词",Size=new Size(680,460),StartPosition=FormStartPosition.CenterParent,Font=Font}){
+                var text=Box();text.Text=Services.EditorialPolicy.Replace("\n","\r\n\r\n");dlg.Controls.Add(text);dlg.ShowDialog(this);
+            }
+        });
         menu.Items.Add("润色提示词…",null,(s,e)=>{var value=Ask("润色偏好","补充作者语气或术语偏好，保留引用和数值的规则始终生效。",prompt,false);if(value!=null){prompt=value;StorePrefs();}});
         var themes=new ToolStripMenuItem("外观");menu.Items.Add(themes);
         foreach(string label in new[]{"跟随系统","亮色","暗色"})themes.DropDownItems.Add(label,null,(s,e)=>{theme=((ToolStripItem)s).Text;ApplyTheme();StorePrefs();});
         menu.Items.Add("关于 / 使用说明",null,(s,e)=>MessageBox.Show(this,
-            "TechPaper 0.9.0-preview.18 公开预览版\r\n\r\n打开或拖入 DOCX、PPTX、PDF、PNG 或 JPG。导出离线 HTML 可查看原句、所在位置、OCR 置信和本地语料命中。DOCX 可另外导出逐段修订副本。\r\n\r\nAI、MIX、HUMAN 仅为透明规则的低置信写作提示；不足时弃答。来源相似度仅检查指定语料的原文重叠。\r\n\r\n离线分析无需账户。本地模型需要 Ollama；在线 GPTZero 需要用户主动发送预览文本。文档不作遥测。请核对参考文献、数字、分页及批注。\r\n\r\n主程序 MIT；依赖许可见 third-party。Ctrl+O 打开，Ctrl+R 导出报告，Esc 取消报告。","关于 TechPaper"));
+            "TechPaper 0.9.0-preview.19 公开预览版\r\n\r\n打开或拖入 DOCX、PPTX、PDF、PNG 或 JPG。导出离线 HTML 可查看原句、所在位置、OCR 置信和本地语料命中。DOCX 可另外导出逐段修订副本。\r\n\r\nAI、MIX、HUMAN 仅为透明规则的低置信写作提示；不足时弃答。来源相似度仅检查指定语料的原文重叠。\r\n\r\n离线分析无需账户。本地模型需要 Ollama；在线 GPTZero 需要用户主动发送预览文本。文档不作遥测。请核对参考文献、数字、分页及批注。\r\n\r\n主程序 MIT；依赖许可见 third-party。Ctrl+O 打开，Ctrl+R 导出报告，Esc 取消报告。","关于 TechPaper"));
         more.Click+=(s,e)=>menu.Show(more,new Point(0,more.Height));
         KeyDown+=(s,e)=>{if(e.Control&&e.KeyCode==Keys.O&&!busy){e.SuppressKeyPress=true;Choose(s,e);}else if(e.Control&&e.KeyCode==Keys.R&&reportAction.Enabled){e.SuppressKeyPress=true;Report(s,e);}else if(e.KeyCode==Keys.Escape&&(worker!=null || polishCancellation!=null)){e.SuppressKeyPress=true;if(polishCancellation!=null)StopPolishing();else CancelReport();}};
         try{if(File.Exists(settings)){var lines=File.ReadAllLines(settings);if(lines.Length>0)theme=lines[0];if(lines.Length>1)prompt=lines[1];}}catch(IOException){}
@@ -57,6 +63,20 @@ internal sealed partial class Workspace {
             });
             apply.Dock=DockStyle.Bottom;dlg.Controls.Add(field);dlg.Controls.Add(select);dlg.Controls.Add(apply);
             if(dlg.ShowDialog(this)==DialogResult.OK){rows.Items[selected].SubItems[3].Text="手动建议";rows.Items[selected].Checked=false;Preview();status.Text="已更新预览，请核对并勾选采用。";}
+        }
+    }
+    void PasteParagraphs(){
+        if(busy)return;
+        using(var dlg=new Form{Text="粘贴文本并自动分段",Size=new Size(660,410),StartPosition=FormStartPosition.CenterParent,Font=Font}){
+            var input=new TextBox{Multiline=true,AcceptsReturn=true,MaxLength=0,Dock=DockStyle.Fill,ScrollBars=ScrollBars.Vertical};
+            var hint=LabelAt("按换行分段，也识别同一行连续的 H1、H2、H3 假设。保留原排版请直接打开 DOCX。",9);
+            hint.Dock=DockStyle.Top;hint.Height=42;
+            var accept=ButtonAt("导入 0 段",(s,e)=>{});accept.Enabled=false;accept.Dock=DockStyle.Bottom;accept.DialogResult=DialogResult.OK;
+            input.TextChanged+=(s,e)=>{int count=Manuscript.SplitPastedText(input.Text).Length;accept.Text="导入 "+count+" 段";accept.Enabled=count>0;};
+            dlg.Controls.Add(input);dlg.Controls.Add(hint);dlg.Controls.Add(accept);dlg.ActiveControl=input;
+            if(dlg.ShowDialog(this)!=DialogResult.OK)return;
+            var text=input.Text;
+            Run(async delegate{var loaded=await Task.Run(()=>Manuscript.FromPastedText(text));ShowManuscript(loaded);});
         }
     }
     void StorePrefs(){try{Directory.CreateDirectory(Path.GetDirectoryName(settings));File.WriteAllLines(settings,new[]{theme,prompt});}catch(Exception ex){status.Text="偏好保存失败："+ex.Message;}}
@@ -100,8 +120,8 @@ internal sealed partial class Workspace {
     internal void CancelReport(){cancelling=true;try{if(worker!=null&&!worker.HasExited)worker.Kill();}catch(InvalidOperationException){}}
     static string Arg(string value){return "\""+value+"\"";}
     void Report(object sender,EventArgs e){
-        if(worker!=null){CancelReport();return;}if(activeFile==null||busy)return;
-        using(var dialog=new SaveFileDialog{Filter="离线 HTML 报告|*.html",FileName=Path.GetFileNameWithoutExtension(activeFile)+"-原文报告.html"}){
+        if(worker!=null){CancelReport();return;}if((activeFile==null&&doc==null)||busy)return;
+        using(var dialog=new SaveFileDialog{Filter="离线 HTML 报告|*.html",FileName=(Path.GetFileNameWithoutExtension(activeFile)??"粘贴文本")+"-原文报告.html"}){
             if(dialog.ShowDialog(this)!=DialogResult.OK)return;
             var dest=dialog.FileName;if(File.Exists(dest)){MessageBox.Show("请选择新的报告文件名。");return;}
             Run(()=>WriteReport(activeFile,dest,corpus,true));
@@ -113,6 +133,10 @@ internal sealed partial class Workspace {
                 string dir=Path.Combine(Path.GetDirectoryName(dest),".techpaper-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(dir);
                 string local=Path.Combine(dir,"report.html");cancelling=false;
                 try{
+                    if(input==null){
+                        input=Path.Combine(dir,"粘贴文本.docx");
+                        await Task.Run(()=>doc.Export(input,new HashSet<int>(),false));
+                    }
                     using(var proc=new Process{StartInfo=new ProcessStartInfo(exe,Arg(input)+" "+Arg(local)+(refFile==null?"":" --corpus "+Arg(refFile))){
                         UseShellExecute=false,CreateNoWindow=true,RedirectStandardOutput=true,StandardOutputEncoding=Encoding.UTF8}}){
                         proc.Start();worker=proc;reportAction.Text="取消分析";reportAction.Enabled=true;status.Text="正在本机读取文字与图像…";string line,last="";

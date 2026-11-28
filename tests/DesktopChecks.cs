@@ -103,6 +103,18 @@ class DesktopChecks {
     static System.Collections.Generic.IEnumerable<Control> Walk(Control c){foreach(Control child in c.Controls){yield return child;foreach(var item in Walk(child))yield return item;}}
     [STAThread]static void Main(string[] args) {
         Application.EnableVisualStyles();Application.SetCompatibleTextRenderingDefault(false);
+        EventHandler run=null;
+        Exception failure=null;
+        run=(s,e)=>{
+            Application.Idle-=run;
+            try{CheckWorkspace(args);}catch(Exception ex){failure=ex;}
+            finally{Application.ExitThread();}
+        };
+        Application.Idle+=run;
+        Application.Run();
+        if(failure!=null)throw new InvalidOperationException("Workspace checks failed",failure);
+    }
+    static void CheckWorkspace(string[] args) {
         string folder=Path.Combine(Path.GetTempPath(),"TechPaper QA "+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(folder);
         var f=new Workspace();f.StartPosition=FormStartPosition.Manual;f.Location=new Point(-2500,0);f.Show();
         try{
@@ -172,6 +184,26 @@ class DesktopChecks {
             var same=f.WriteReport(src,report,null,false);Pump(()=>same.IsCompleted);Check(same.IsFaulted,"existing report refused");
             string canceled=Path.Combine(folder,"cancel.html");var stop=f.WriteReport(src,canceled,null,false);f.CancelReport();Pump(()=>stop.IsCompleted);stop.GetAwaiter().GetResult();
             Check(!File.Exists(canceled) && !Directory.EnumerateDirectories(folder,".techpaper-*").Any(),"cancel cleanup");
+            using(var enter=new System.Windows.Forms.Timer{Interval=50}){
+                enter.Tick+=(s,e)=>{
+                    var dlg=Application.OpenForms.Cast<Form>().SingleOrDefault(v=>v.Text=="粘贴文本并自动分段");
+                    if(dlg==null)return;
+                    enter.Stop();
+                    Walk(dlg).OfType<TextBox>().Single().Text="H1（温度）：在研究的过程中，我们记录了室温[2]。 H2（时间）：在相同的条件下记录响应时间。";
+                    var button=Walk(dlg).OfType<Button>().Single();
+                    Check(button.Enabled && button.Text=="导入 2 段","paste dialog previews paragraph count");
+                    button.PerformClick();
+                };
+                enter.Start();
+                typeof(Workspace).GetMethod("PasteParagraphs",BindingFlags.Instance|BindingFlags.NonPublic).Invoke(f,null);
+                Pump(()=>rows.Items.Count==2 && rows.Items[0].SubItems[4].Text.StartsWith("H1"));
+            }
+            Check(rows.CheckedItems.Count==0,"pasted suggestions require author selection");
+            var pastedReport=Path.Combine(folder,"pasted.html");
+            var review=f.WriteReport(null,pastedReport,null,false);Pump(()=>review.IsCompleted);review.GetAwaiter().GetResult();
+            var markup=File.ReadAllText(pastedReport);
+            Check(markup.Contains("在研究的过程中") && markup.Contains("[2]") && markup.Contains("H2") &&
+                !Directory.EnumerateDirectories(folder,".techpaper-*").Any(),"paste exports original highlights and removes temporary input");
             foreach(string ext in new[]{".pdf",".docx",".pptx",".png",".xyz"}){
                 string broken=Path.Combine(folder,"bad"+ext);File.WriteAllText(broken,"invalid");
                 bool failed=false;try{Workspace.ValidateFile(broken);}catch{failed=true;}Check(failed,"invalid "+ext);

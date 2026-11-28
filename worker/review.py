@@ -19,6 +19,7 @@ R = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}"
 P = "{http://schemas.openxmlformats.org/presentationml/2006/main}"
 M = "{http://schemas.openxmlformats.org/officeDocument/2006/math}"
 ENGINE = "TechPaper Style Baseline 0.2.1"
+VISIBLE_RENDER_NOTICE = "检测到不可见文字层；本页按可见渲染识别，隐藏数值不参与分类"
 AI = re.compile(r"值得注意的是|不可忽视的是|综上所述|至关重要|深远影响|it is (?:important|worth) (?:to note|noting)|in conclusion|plays? a (?:crucial|pivotal) role",re.I)
 PERSONAL = re.compile(r"我(?:手工|亲自|记录|重测|重新|测量)|\bI (?:measured|counted|rechecked|recorded|repeated)\b",re.I)
 SENT = re.compile(r"[^。！？!?\n]+?(?:[。！？!?]+|\.(?=\s|$)|(?=\n|$))|[\s\S]",re.S)
@@ -303,7 +304,7 @@ def extract(path):
                         hidden=any(hidden_text_object(obj,pdf.raw) for obj in page.get_objects(filter=[pdf.raw.FPDF_PAGEOBJ_TEXT]))
                         if hidden:
                             # Render once so overlapping invisible OCR and visible content cannot both enter the report.
-                            yield f"第 {i+1} 页","","检测到不可见文字层；本页按可见渲染识别，隐藏数值不参与分类",None
+                            yield f"第 {i+1} 页","",VISIBLE_RENDER_NOTICE,None
                         if not hidden and text.get_text_bounded().strip():
                             for line,(_,value,bounds) in enumerate(native_lines(text,pdf,page.get_width()),1):
                                 box=" / pt %.1f,%.1f,%.1f,%.1f"%bounds
@@ -407,6 +408,9 @@ def report(path,dest,corpus_path=None):
             out.write("<p>来源比对仅检索所选 UTF-8 TXT 的连续相同字符。OCR 坐标为图像左上角像素，低于 0.75 时跳过分类。段内偏移从 0 开始，末端不含。</p>")
             for n,(loc,text,kind,prob) in enumerate(extract(path),1):
                 if n%20==1:print(f"正在分析位置 {n}",flush=True)
+                if kind==VISIBLE_RENDER_NOTICE:
+                    out.write(f"<article><b>提取说明</b> · {esc(loc)} · {esc(kind)}</article>")
+                    continue
                 if not text.strip():
                     counts["skips"]+=1
                     out.write(f"<article><b>未分析</b> · {esc(loc)} · {esc(kind)}</article>")
@@ -418,10 +422,13 @@ def report(path,dest,corpus_path=None):
                     counts[label]+=1
                     counts["total"]+=1
                     score="" if prob is None else f" · OCR {prob:.2f}"
+                    if prob is not None and prob<.75 and f"{prob:.2f}"=="0.75":
+                        score=" · OCR < 0.75"
                     sources = "<br>".join(esc(line) for line in corpus.match_lines(sentence,m.start()))
-                    out.write(f"<article id='p{n}s{m.start()}'><small>{esc(loc)} · 字符 {m.start()}–{m.end()} · {esc(kind)}{score}</small><div><b>写作信号　{label} · {confidence}</b>　{esc(why)}<br><mark class='{label}'>{esc(sentence)}</mark></div><aside><b>本地语料</b><br>{sources}</aside></article>")
+                    out.write(f"<article id='p{n}s{m.start()}'><small>{esc(loc)} · 字符 {m.start()}–{m.end()} · {esc(kind)}{esc(score)}</small><div><b>写作信号　{label} · {confidence}</b>　{esc(why)}<br><mark class='{label}'>{esc(sentence)}</mark></div><aside><b>本地语料</b><br>{sources}</aside></article>")
             total=counts["total"];assigned=sum(counts[k] for k in ("AI","MIX","HUMAN"))
-            summary=f"共 {total} 个非空片段，分类 {assigned}（{assigned/max(total,1):.1%}），弃答 {counts['未判断']}，低置信未分析 {counts['未分析']}，空白/跳过/失败位置 {counts['skips']}。"
+            coverage=f"{assigned/total:.1%}" if total else "未提取到正文，覆盖率不适用"
+            summary=f"共 {total} 个非空片段，分类 {assigned}（{coverage}），弃答 {counts['未判断']}，低置信未分析 {counts['未分析']}，空白/跳过/失败位置 {counts['skips']}。"
             details=" · ".join(f"{k} {counts[k]}" for k in ("AI","MIX","HUMAN"))
             out.write(f"<section id='coverage'><h2>覆盖统计</h2><p>{summary}</p>{details}<p>分母为成功提取的非空文本片段，跳过的公式、图像和页面单列。无文字时不执行分类。</p></section></html>")
         # Windows rename refuses to replace an existing destination.

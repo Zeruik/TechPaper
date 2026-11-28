@@ -51,6 +51,15 @@ def verify(folder, worker):
             articles=tree.xpath("//article[.//mark]")
             ids=[a.get("id") for a in articles]
             assert None not in ids and len(ids)==len(set(ids)),name
+            summary=tree.xpath("//section[@id='coverage']/p")[0].text_content()
+            labels=[a.find(".//mark").get("class") for a in articles]
+            assigned=sum(label in ("AI","MIX","HUMAN") for label in labels)
+            rate=f"{assigned/len(labels):.1%}" if labels else "未提取到正文，覆盖率不适用"
+            skips=int(name=="hidden.pdf")
+            assert summary==(
+                f"共 {len(labels)} 个非空片段，分类 {assigned}（{rate}），弃答 {labels.count('未判断')}，"
+                f"低置信未分析 {labels.count('未分析')}，空白/跳过/失败位置 {skips}。"
+            ),(name,summary)
             if name=="long.docx":
                 assert len(articles)==12000
                 for i,a in enumerate(articles):

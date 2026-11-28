@@ -23,6 +23,20 @@ def make(folder, poster):
             revision = OxmlElement("w:" + ("del" if mode == "paragraph-del" else mode))
             target.addprevious(revision)
             revision.append(target)
+    from docx.enum.style import WD_STYLE_TYPE
+    hidden_style = document.styles.add_style("Hidden QA", WD_STYLE_TYPE.CHARACTER)
+    hidden_style.font.hidden = True
+    inherited = document.styles.add_style("Derived QA", WD_STYLE_TYPE.CHARACTER)
+    inherited.base_style = hidden_style
+    para_style = document.styles.add_style("Paragraph QA", WD_STYLE_TYPE.PARAGRAPH)
+    para_style.font.hidden = True
+    paragraph = document.add_paragraph(style=para_style)
+    paragraph.add_run("EXCLUDED_VALUE")
+    paragraph.add_run("Visible toggle", style=inherited)
+    paragraph.add_run(" and visible override.").font.hidden = False
+    for container in (document.add_table(rows=1, cols=1).cell(0,0), document.sections[0].header):
+        run = container.paragraphs[0].add_run("EXCLUDED_VALUE", style=inherited)
+        run.add_picture(str(poster), width=Inches(2))
     document.save(folder / "visibility.docx")
 
 
@@ -32,8 +46,9 @@ def verify(report):
     rows = tree.xpath("//article[.//mark]")
     assert [a.find(".//mark").text for a in rows[:2]] == ["Public heading.", "PUBLIC_VALUE"]
     assert "EXCLUDED_VALUE" not in tree.text_content()
-    assert len(rows) == 7
-    assert all("段 2 / 图 1" in a.find("small").text for a in rows[2:])
+    assert len(rows) == 8
+    assert rows[-1].find(".//mark").text == "Visible toggle and visible override."
+    assert all("段 2 / 图 1" in a.find("small").text for a in rows[2:-1])
     print("PASS visible DOCX text and drawing retained once; hidden and revision variants excluded")
 
 

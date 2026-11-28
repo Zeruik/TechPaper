@@ -143,15 +143,11 @@ def office(path):
                 root=ET.fromstring(z.read(target))
                 yield from visible_slide_rows(z,root,target,index)
         else:
-            styles = {}
-            default_style = None
-            if "word/styles.xml" in z.namelist():
-                for style in ET.fromstring(z.read("word/styles.xml")).findall(W+"style"):
-                    if style.get(W+"type") == "paragraph" and style.get(W+"styleId"):
-                        key = style.get(W+"styleId")
-                        styles[key] = style
-                        if style.get(W+"default") in ("1", "true", "on"):
-                            default_style = key
+            style_root = ET.fromstring(z.read("word/styles.xml")) if "word/styles.xml" in z.namelist() else None
+            styles = {style.get(W+"styleId"): style for style in (() if style_root is None else style_root.findall(W+"style")) if style.get(W+"styleId")}
+            defaults = {style.get(W+"type"): key for key, style in styles.items() if style.get(W+"default") in ("1","true","on")}
+            default_style = defaults.get("paragraph")
+            hidden = run_visibility(style_root, styles, defaults)
             parts=["word/document.xml"]
             parts += [name for name in z.namelist() if re.fullmatch(r"word/(?:footnotes|endnotes|header\d+|footer\d+)\.xml",name)]
             for part in parts:
@@ -168,7 +164,14 @@ def office(path):
                         stack.pop()
                         if node.tag == W+"p":
                             count += 1
-                            hidden_ancestor = any(hidden_run(ancestor) for ancestor in stack if ancestor.tag == W+"r")
+                            paragraph = None
+                            hidden_ancestor = False
+                            for ancestor in stack:
+                                if ancestor.tag == W+"p":
+                                    paragraph = ancestor
+                                elif ancestor.tag == W+"r" and hidden(ancestor, paragraph):
+                                    hidden_ancestor = True
+                                    break
                             if not revision_depth and not hidden_ancestor:
                                 loc = f"{part.split('/')[-1]} / 段 {count}"
                                 kind = paragraph_kind(node, styles, default_style)
@@ -176,14 +179,44 @@ def office(path):
                                     kind=BIBLIOGRAPHY_CONTROL
                                 yield from docx_review_rows(z, node, part, loc, kind)
                             node.clear()
-                        elif revision or (node.tag == W+"r" and hidden_run(node)):
+                        elif revision or (node.tag == W+"r" and hidden(node, next((p for p in reversed(stack) if p.tag == W+"p"), None))):
                             node.clear()
                         revision_depth -= int(revision)
 
 
-def hidden_run(run):
-    flags = run.findall(W+"rPr/"+W+"vanish")
-    return any(f.get(W+"val", "true").lower() not in ("false", "0", "off") for f in flags)
+def run_visibility(root, styles, defaults):
+    def enabled(flag):
+        return flag is not None and flag.get(W+"val", "true") in ("1", "true", "on")
+
+    default_hidden = root is not None and enabled(root.find(W+"docDefaults/"+W+"rPrDefault/"+W+"rPr/"+W+"vanish"))
+    toggles = {}
+
+    def toggle(ref, kind):
+        key = ref.get(W+"val") if ref is not None else None
+        if key not in styles:
+            key = defaults.get(kind)
+        if key not in toggles:
+            current = key
+            state = False
+            seen = set()
+            while current in styles:
+                if current in seen:
+                    raise ValueError("Word 样式继承存在循环，无法确定正文可见性。")
+                seen.add(current)
+                style = styles[current]
+                state ^= enabled(style.find(W+"rPr/"+W+"vanish"))
+                parent = style.find(W+"basedOn")
+                current = parent.get(W+"val") if parent is not None else None
+            toggles[key] = state
+        return toggles[key]
+
+    def hidden(run, paragraph):
+        direct = run.find(W+"rPr/"+W+"vanish")
+        if direct is not None:
+            return enabled(direct)
+        para_style = paragraph.find(W+"pPr/"+W+"pStyle") if paragraph is not None else None
+        return default_hidden ^ toggle(para_style, "paragraph") ^ toggle(run.find(W+"rPr/"+W+"rStyle"), "character")
+    return hidden
 
 
 def paragraph_kind(node, styles, default_style):

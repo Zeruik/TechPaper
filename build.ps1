@@ -7,11 +7,14 @@ New-Item -ItemType Directory -Force build,release | Out-Null
 $refs=@('/r:System.Xml.Linq.dll','/r:System.IO.Compression.dll','/r:System.IO.Compression.FileSystem.dll','/r:System.Web.Extensions.dll','/r:System.Windows.Forms.dll','/r:System.Drawing.dll')
 # Embed the published prompt blocks so offline editions and documentation stay in sync.
 $promptDoc=Get-Content -LiteralPath docs/EDITORIAL-PROMPT.zh-CN.md -Raw -Encoding UTF8
-$blocks=[regex]::Matches($promptDoc,'(?ms)^```text\r?\n(.+?)\r?\n```\r?$')
-if($blocks.Count -ne 2){throw 'Expected the expanded prompt and citation examples'}
+$resourceNames=@('expanded','citations')
 foreach($i in 0,1){
+    $name=$resourceNames[$i]
+    $pattern='(?ms)^<!-- techpaper-prompt: '+$name+' -->\r?\n^```text\r?\n(.+?)\r?\n```\r?$'
+    $blocks=[regex]::Matches($promptDoc,$pattern)
+    if($blocks.Count -ne 1){throw "Expected one named editorial prompt: $name"}
     $file="build/editorial-$i.txt"
-    [IO.File]::WriteAllText((Join-Path $PSScriptRoot $file),$blocks[$i].Groups[1].Value)
+    [IO.File]::WriteAllText((Join-Path $PSScriptRoot $file),$blocks[0].Groups[1].Value)
     $refs+="/resource:$file,TechPaper.Editorial$i"
 }
 & $csc /nologo /codepage:65001 /optimize+ /target:winexe /win32manifest:src\app.manifest /win32icon:assets\TechPaper.ico /out:build\TechPaper.exe @refs src\Workspace.cs src\FileReview.cs src\Manuscript.cs src\Services.cs

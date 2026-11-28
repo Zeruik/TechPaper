@@ -259,6 +259,7 @@ class Regression {
                 new[]{"At the bench, the observer logged the readings and checked the fixture.",
                     "At the bench, the observer logged the readings and checked the fixture. At the bench the observer logged the readings, and checked the fixture."},
                 new[]{"正接时读数为 +1.7 V，反接时为 −0.4 V。","反接时读数为 +1.7 V，正接时为 −0.4 V。"},
+                new[]{"甲槽为 12 s，乙槽为 21 s。","甲槽为12秒，乙槽为21秒。"},
                 new[]{"加载时位移为 0.8 mm，卸载时为 0.2 mm。","卸载时位移为 0.8 mm，加载时为 0.2 mm。"},
                 new[]{"对中加载时读数为 1.7 mm，偏心加载时为 0.4 mm。","偏心加载时读数为 1.7 mm，对中加载时为 0.4 mm。"},
                 new[]{"During loading the gauge read 3 mm; during unloading it read 1 mm.","During unloading the gauge read 3 mm; during loading it read 1 mm."},

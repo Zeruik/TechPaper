@@ -1,3 +1,4 @@
+import re
 import sys
 import subprocess
 import zipfile
@@ -25,8 +26,11 @@ def main():
         review.report(source,out,corpus)
         text=out.read_text(encoding="utf-8")
         assert text.count('class=\'HUMAN\'')==12000
-        assert "p12000s0" in text and "段 12000" in text and "本地来源.txt · 字符 0" in text
-        assert '&lt;script&gt;' in text and len(set(review.re.findall("id='(p[0-9]+s[0-9]+)'",text)))==text.count("<mark")
+        source_hit=f"本地来源.txt · 语料字符 0–{len(phrase)} · 段内字符 0–{len(phrase)} · {phrase}"
+        assert text.count(source_hit)==12000
+        assert "id='p12000s0'><small>document.xml / 段 12000 " in text
+        assert "id='p12001s0'><small>document.xml / 段 12001 " in text
+        assert '&lt;script&gt;' in text and len(set(re.findall("id='(p[0-9]+s[0-9]+)'",text)))==text.count("<mark")
         try:review.report(source,out)
         except FileExistsError:pass
         else:raise AssertionError("overwritten")

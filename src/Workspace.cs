@@ -181,6 +181,7 @@ internal sealed partial class Workspace : Form {
     }
     internal async Task PolishBatch(int[] indices,string modelName){
         int done=0,unchanged=0,skipped=0;
+        int selectedPolicy=policyChoice;string instruction=prompt;
         polishCancellation=new CancellationTokenSource();
         var cancel=polishCancellation.Token;
         model.Text="停止润色";model.Enabled=true;
@@ -191,7 +192,7 @@ internal sealed partial class Workspace : Form {
                 cancel.ThrowIfCancellationRequested();
                 var p=doc.Items[i];status.Text=String.Format("正在处理第 {0}/{1} 段…",done+unchanged+skipped+1,indices.Length);
                 try {
-                    string[] result=await Task.Run(()=>Services.PolishParagraph(p,modelName,prompt,cancel));
+                    string[] result=await Task.Run(()=>Services.PolishParagraph(p,modelName,instruction,cancel,selectedPolicy));
                     cancel.ThrowIfCancellationRequested();
                     p.Revisions=result;p.Suggested=String.Concat(result);
                 }

@@ -27,14 +27,29 @@ class DesktopChecks {
             new XElement(w+"r",new XElement(w+"rPr",new XElement(w+"vertAlign",new XAttribute(w+"val","superscript"))),new XElement(w+"t","[7]")),
             new XElement(w+"r",new XElement(w+"t",right))),Revisions=new[]{left,"[7]",right}};
         var json=new JavaScriptSerializer();
+        foreach(int choice in new[]{0,1,2}){
+            var plain=Task.Run(()=>Services.PolishForBatch(left,"fixture","",CancellationToken.None,choice));
+            var query=server.GetContextAsync();Pump(()=>query.IsCompleted);
+            var ctx=query.Result;
+            string body;
+            using(var reader=new StreamReader(ctx.Request.InputStream))body=reader.ReadToEnd();
+            string policy=Services.SelectedPolicy(choice);
+            Check(policy.Contains("记录到微弱振荡")==false &&
+                policy.Contains("只编辑目标段落")==(choice>0) && policy.Contains("短臂端有变形")==(choice==2),
+                "distinct embedded editing modes "+choice);
+            Check(body.Contains(json.Serialize(policy).TrimEnd('"')),"single run receives selected policy "+choice);
+            var answer=Encoding.UTF8.GetBytes(json.Serialize(new{message=new{content=left.Trim()}}));
+            ctx.Response.ContentLength64=answer.Length;ctx.Response.Close(answer,false);
+            Pump(()=>plain.IsCompleted);Check(plain.Result==left,"safe single run response");
+        }
         foreach(string mode in new[]{"valid","punctuation","protected","missing","splitClaim"}){
-            var task=Task.Run(()=>Services.PolishParagraph(passage,"fixture","",CancellationToken.None));
+            var task=Task.Run(()=>Services.PolishParagraph(passage,"fixture","",CancellationToken.None,2));
             var request=server.GetContextAsync();Pump(()=>request.IsCompleted);
             var ctx=request.Result;
             string body;
             using(var reader=new StreamReader(ctx.Request.InputStream))body=reader.ReadToEnd();
             var payload=json.Deserialize<System.Collections.Generic.Dictionary<string,object>>(body);
-            Check(body.Contains("[7]") && json.Serialize(payload["format"]).Contains("run2") &&
+            Check(body.Contains("短臂端有变形") && body.Contains("[7]") && json.Serialize(payload["format"]).Contains("run2") &&
                 !json.Serialize(payload["format"]).Contains("run1"),"read-only citation in paragraph context");
             string revised=left.Trim().Replace("in order to","to");
             var values=new System.Collections.Generic.Dictionary<string,string>{{"run0",revised},{"run2",right}};

@@ -13,6 +13,7 @@ using Microsoft.Win32;
 namespace TechPaper {
 internal sealed partial class Workspace {
     string activeFile,corpus,prompt="",theme="跟随系统";
+    int policyChoice;
     Button reportAction;
     Process worker;
     bool cancelling;
@@ -30,9 +31,16 @@ internal sealed partial class Workspace {
         rows.DoubleClick+=(s,e)=>EditFragments();
         menu.Items.Add("选择本地比对语料 (.txt)…",null,(s,e)=>{using(var d=new OpenFileDialog{Filter="UTF-8 文本|*.txt"})if(d.ShowDialog(this)==DialogResult.OK){corpus=d.FileName;status.Text="本地比对语料："+Path.GetFileName(corpus);}});
         menu.Items.Add("清除本地语料",null,(s,e)=>{corpus=null;status.Text="已清除比对语料。";});
+        var policies=new ToolStripMenuItem("润色模式");menu.Items.Add(policies);
+        foreach(string label in Services.PolicyChoices)policies.DropDownItems.Add(label,null,(s,e)=>{
+            policyChoice=Array.IndexOf(Services.PolicyChoices,((ToolStripItem)s).Text);StorePrefs();
+        });
+        policies.DropDownOpening+=(s,e)=>{
+            for(int i=0;i<policies.DropDownItems.Count;i++)((ToolStripMenuItem)policies.DropDownItems[i]).Checked=i==policyChoice;
+        };
         menu.Items.Add("查看内置润色提示词…",null,(s,e)=>{
             using(var dlg=new Form{Text="内置润色提示词",Size=new Size(680,460),StartPosition=FormStartPosition.CenterParent,Font=Font}){
-                var text=Box();text.Text=Services.EditorialPolicy.Replace("\n","\r\n\r\n");dlg.Controls.Add(text);dlg.ShowDialog(this);
+                var text=Box();text.Text=Services.SelectedPolicy(policyChoice).Replace("\n","\r\n\r\n");dlg.Controls.Add(text);dlg.ShowDialog(this);
             }
         });
         menu.Items.Add("润色提示词…",null,(s,e)=>{var value=Ask("润色偏好","补充作者语气或术语偏好，保留引用和数值的规则始终生效。",prompt,false);if(value!=null){prompt=value;StorePrefs();}});
@@ -42,7 +50,7 @@ internal sealed partial class Workspace {
             "TechPaper 0.9.0-preview.20 公开预览版\r\n\r\n打开或拖入 DOCX、PPTX、PDF、PNG 或 JPG。导出离线 HTML 可查看原句、所在位置、OCR 置信和本地语料命中。DOCX 可另外导出逐段修订副本。\r\n\r\nAI、MIX、HUMAN 仅为透明规则的低置信写作提示；不足时弃答。来源相似度仅检查指定语料的原文重叠。\r\n\r\n离线分析无需账户。本地模型需要 Ollama；在线 GPTZero 需要用户主动发送预览文本。文档不作遥测。请核对参考文献、数字、分页及批注。\r\n\r\n主程序 MIT；依赖许可见 third-party。Ctrl+O 打开，Ctrl+R 导出报告，Esc 取消报告。","关于 TechPaper"));
         more.Click+=(s,e)=>menu.Show(more,new Point(0,more.Height));
         KeyDown+=(s,e)=>{if(e.Control&&e.KeyCode==Keys.O&&!busy){e.SuppressKeyPress=true;Choose(s,e);}else if(e.Control&&e.KeyCode==Keys.R&&reportAction.Enabled){e.SuppressKeyPress=true;Report(s,e);}else if(e.KeyCode==Keys.Escape&&(worker!=null || polishCancellation!=null)){e.SuppressKeyPress=true;if(polishCancellation!=null)StopPolishing();else CancelReport();}};
-        try{if(File.Exists(settings)){var lines=File.ReadAllLines(settings);if(lines.Length>0)theme=lines[0];if(lines.Length>1)prompt=lines[1];}}catch(IOException){}
+        try{if(File.Exists(settings)){var lines=File.ReadAllLines(settings);if(lines.Length>0)theme=lines[0];if(lines.Length>1)prompt=lines[1];if(lines.Length>2)policyChoice=Math.Max(0,Array.IndexOf(Services.PolicyChoices,lines[2]));}}catch(IOException){}
         ApplyTheme();
         Activated+=(s,e)=>{if(theme=="跟随系统")ApplyTheme();};
     }
@@ -79,7 +87,7 @@ internal sealed partial class Workspace {
             Run(async delegate{var loaded=await Task.Run(()=>Manuscript.FromPastedText(text));ShowManuscript(loaded);});
         }
     }
-    void StorePrefs(){try{Directory.CreateDirectory(Path.GetDirectoryName(settings));File.WriteAllLines(settings,new[]{theme,prompt});}catch(Exception ex){status.Text="偏好保存失败："+ex.Message;}}
+    void StorePrefs(){try{Directory.CreateDirectory(Path.GetDirectoryName(settings));File.WriteAllLines(settings,new[]{theme,prompt,Services.PolicyChoices[policyChoice]});}catch(Exception ex){status.Text="偏好保存失败："+ex.Message;}}
     bool? appliedDarkTheme;
     void ApplyTheme(){
         bool dark=theme=="暗色" || theme=="跟随系统" && Convert.ToInt32(Registry.GetValue(@"HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize","AppsUseLightTheme",1))==0;

@@ -209,6 +209,7 @@ class Regression {
                 Check(rejected,"protected scientific detail: "+example[0]);
             }
             foreach (var safe in new[] {
+                new[]{"为便于后续核对，记录员给记录编号。","记录员给记录编号，以便后续核对。"},
                 new[]{"探头在 21.5 °C 工作[4]。随后读取电压。","在 21.5 °C 时探头工作[4]。随后读取电压。"},
                 new[]{"The bracket held [4; 7]. The spring moved.","The bracket remained fixed [4; 7]. The spring moved."},
                 new[]{"需要检验滤波器是否能够分辨两组信号。","需检验滤波器能否分辨两组信号。"},
@@ -241,6 +242,7 @@ class Regression {
                 Check(invalidModel,"reject empty or nonlocal selector");
             }
             var changesOfMeaning = new[] {
+                new[]{"为便于进行后续的核对，记录员对每份记录都进行了编号。","记录员对每份记录进行了编号。"},
                 new[]{"支架保持静止[4]。弹簧出现形变。","支架保持静止。弹簧出现形变[4]。"},
                 new[]{"The bracket held [4]. The spring moved.","The bracket held. The spring moved [4]."},
                 new[]{"支架保持静止［4］；弹簧出现形变［7］。","支架保持静止；弹簧出现形变［4］［7］。"},

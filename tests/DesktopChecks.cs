@@ -146,6 +146,22 @@ class DesktopChecks {
         string folder=Path.Combine(Path.GetTempPath(),"TechPaper QA "+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(folder);
         var f=new Workspace();f.StartPosition=FormStartPosition.Manual;f.Location=new Point(-2500,0);f.Show();
         try{
+            Size normalSize=f.Size;
+            foreach(Size size in new[]{normalSize,f.MinimumSize}){
+                f.Size=size;
+                Application.DoEvents();
+                var buttons=Walk(f).OfType<Button>().Where(b=>b.Visible).ToArray();
+                foreach(var button in buttons){
+                    var bounds=button.RectangleToScreen(button.ClientRectangle);
+                    for(var parent=button.Parent;parent!=null;parent=parent.Parent){
+                        if(!parent.RectangleToScreen(parent.ClientRectangle).Contains(bounds))
+                            throw new InvalidDataException("Clipped action: "+button.Text);
+                    }
+                }
+                using(var graphics=f.CreateGraphics())
+                    Check(buttons.Length>0,"action bounds at "+graphics.DpiX+" DPI, window "+f.Width+" x "+f.Height);
+            }
+            f.Size=normalSize;
             string src=Path.Combine(folder,"中文 样件.docx");File.Copy("tests/sample.docx",src);
             var data=new DataObject(DataFormats.FileDrop,new[]{src});
             typeof(Control).GetMethod("OnDragDrop",BindingFlags.Instance|BindingFlags.NonPublic).Invoke(f,new object[]{new DragEventArgs(data,0,0,0,DragDropEffects.Copy,DragDropEffects.Copy)});

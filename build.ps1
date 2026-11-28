@@ -28,7 +28,7 @@ if($Test){
 if(!$AppOnly){& ./build-worker.ps1}
 if($DesktopTest){
     if(!(Test-Path 'build/dist/review-worker/review-worker.exe')){throw 'Run build-worker.ps1 before -DesktopTest'}
-    & $csc /nologo /codepage:65001 /main:DesktopChecks /win32icon:assets\TechPaper.ico /out:build\DesktopChecks.exe @refs tests\DesktopChecks.cs src\*.cs
+    & $csc /nologo /codepage:65001 /main:DesktopChecks /win32manifest:src\app.manifest /win32icon:assets\TechPaper.ico /out:build\DesktopChecks.exe @refs tests\DesktopChecks.cs src\*.cs
     if($LASTEXITCODE){throw 'Desktop test compilation failed'}
     & ./build/DesktopChecks.exe
     if($LASTEXITCODE){throw 'Desktop regression failed'}

@@ -12,7 +12,7 @@ class Regression {
     static Dictionary<string,byte[]> Read(string path) {
         using(var z=ZipFile.OpenRead(path))return z.Entries.ToDictionary(e=>e.FullName,e=>{using(var s=e.Open())using(var m=new MemoryStream()){s.CopyTo(m);return m.ToArray();}});
     }
-    static void CheckPrivacy(string source) {
+    static void CheckPrivacy(string source, Type manuscriptType) {
         var w=Manuscript.W;
         string folder=Path.Combine("build","privacy-"+Guid.NewGuid());
         Directory.CreateDirectory(folder);
@@ -38,18 +38,20 @@ class Regression {
             using(var z=ZipFile.Open(input,ZipArchiveMode.Create))
                 foreach(var part in parts) using(var stream=z.CreateEntry(part.Key).Open())stream.Write(part.Value,0,part.Value.Length);
             var original=File.ReadAllBytes(input);
-            var doc=new Manuscript(input);
+            var flags=System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+            var open=manuscriptType.GetConstructor(flags,null,new[]{typeof(string)},null);
+            var doc=open.Invoke(new object[]{input});
             foreach(bool extra in new[]{false,true}){
-                string preview=doc.PrivacyPreview(extra);
+                string preview=(string)manuscriptType.GetMethod("PrivacyPreview",flags).Invoke(doc,new object[]{extra});
                 Check(preview.Contains("FixtureOwner") && preview.Contains("直接隐藏的纯文本片段：1；") && preview.Contains(extra?"将删除批注":"保留批注"),"privacy preview matches selected mode");
                 string output=Path.Combine(folder,extra?"extra.docx":"default.docx");
-                doc.Export(output,new HashSet<int>(),true,extra);
+                manuscriptType.GetMethod("Export",flags).Invoke(doc,new object[]{output,new HashSet<int>(),true,extra});
                 var result=Read(output);
                 Check(!result.ContainsKey("docProps/custom.xml") && !utf8.GetString(result["_rels/.rels"]).Contains("docProps/custom.xml") && !utf8.GetString(result["[Content_Types].xml"]).Contains("docProps/custom.xml"),"custom property and package references removed");
                 var revised=Manuscript.Parse(result["word/document.xml"]);
                 Check(revised.Descendants(w+"ins").Any(n=>n.Value.Contains("hidden revision")) && !revised.Root.Value.Contains("hidden ordinary"),"hidden revision retained and ordinary hidden text removed");
                 Check(extra?!result.ContainsKey("word/comments.xml"):result["word/comments.xml"].SequenceEqual(parts["word/comments.xml"]),"comment part matches preview");
-                new Manuscript(output);
+                open.Invoke(new object[]{output});
             }
             Check(original.SequenceEqual(File.ReadAllBytes(input)),"privacy source intact");
         } finally {
@@ -58,6 +60,12 @@ class Regression {
         }
     }
     static void Main(string[] args) {
+        if(args.Length==3 && args[0]=="--installed-privacy"){
+            var assembly=System.Reflection.Assembly.LoadFrom(Path.GetFullPath(args[1]));
+            CheckPrivacy(args[2],assembly.GetType("TechPaper.Manuscript",true));
+            Console.WriteLine("PASS installed privacy preview and both exports");
+            return;
+        }
         if(args.Length==3 && args[0]=="--office-math"){
             var before=File.ReadAllBytes(args[1]);
             var manuscript=new Manuscript(args[1]);
@@ -80,7 +88,7 @@ class Regression {
         }
         string source="tests/sample.docx", path=Path.Combine("build",Guid.NewGuid()+".docx");
         var original=File.ReadAllBytes(source);var a=Read(source);var doc=new Manuscript(source);var w=Manuscript.W;
-        CheckPrivacy(source);
+        CheckPrivacy(source,typeof(Manuscript));
         try {
             var ids=new HashSet<int>(Enumerable.Range(0,doc.Items.Count));
             Check(doc.Items.Count(p=>p.Editable && p.Suggested!=p.Text)==3,"three proposed edits");

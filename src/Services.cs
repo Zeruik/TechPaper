@@ -93,12 +93,15 @@ internal static class Services {
         const string counted=@"(?<chineseCount>[零一二两三四五六七八九十百千万]+(?:项|组|种|次|类|处|份))";
         const string condition=@"(?<eccentricLoad>偏心加载|\b(?i:eccentric loading)\b)|(?<centeredLoad>对中加载|\b(?i:concentric loading)\b)|"+
             @"(?<loading>加载|\b(?i:loading)\b)|(?<unloading>卸载|\b(?i:unloading)\b)|正接|反接";
-        string anchors = "(?:"+citation+"|"+identifier+"|"+measurement+"|"+quantity+"|"+question+"|"+counted+"|"+condition+"|"+qualifier+"|"+group+"|"+relation+"|"+direction+"|"+comparison+"|"+association+"|"+causation+")";
+        const string port=@"(?<inlet>入口|\b(?i:inlet)\b)|(?<outlet>出口|\b(?i:outlet)\b)";
+        string anchors = "(?:"+citation+"|"+identifier+"|"+measurement+"|"+quantity+"|"+question+"|"+counted+"|"+condition+"|"+port+"|"+qualifier+"|"+group+"|"+relation+"|"+direction+"|"+comparison+"|"+association+"|"+causation+")";
         if (String.IsNullOrWhiteSpace(updated) || updated.Contains("\n") || updated.Contains("\r") ||
             updated.Length > text.Length * 2 + 24 ||
             !ProtectedTokens(text,measurement).SequenceEqual(ProtectedTokens(updated,measurement)) ||
             !ProtectedTokens(text,citation).SequenceEqual(ProtectedTokens(updated,citation)) ||
             !ProtectedTokens(text,anchors).SequenceEqual(ProtectedTokens(updated,anchors))){
+            if(!ProtectedTokens(text,port).SequenceEqual(ProtectedTokens(updated,port)))
+                throw new InvalidDataException("入口或出口的表述发生变化，请核对测点与结果的对应关系。");
             if(!ProtectedTokens(text,condition).SequenceEqual(ProtectedTokens(updated,condition)))
                 throw new InvalidDataException("接线方式或加载工况发生变化，请核对每个读数对应的工况。");
             if(!ProtectedTokens(text,quantity).SequenceEqual(ProtectedTokens(updated,quantity)))
@@ -148,7 +151,7 @@ internal static class Services {
                 return Regex.Replace(m.Value,@"\s+","");
             });
     }
-    static readonly string[] normalizedAnchors={"association","causation","temperatureChange","temperatureDifference","relativeDisplacement","absoluteDisplacement","openQuestion","abilityQuestion","eccentricLoad","centeredLoad","loading","unloading"};
+    static readonly string[] normalizedAnchors={"association","causation","temperatureChange","temperatureDifference","relativeDisplacement","absoluteDisplacement","openQuestion","abilityQuestion","eccentricLoad","centeredLoad","loading","unloading","inlet","outlet"};
     internal static string[] ListLocalModels() {
         var req=(HttpWebRequest)WebRequest.Create("http://127.0.0.1:11434/api/tags");
         req.Proxy=null;

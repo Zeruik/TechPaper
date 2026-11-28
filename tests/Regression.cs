@@ -194,6 +194,10 @@ class Regression {
                 Check(rejected,"protected scientific detail: "+example[0]);
             }
             foreach (var safe in new[] {
+                new[]{"记录了传感器温度的变化。","记录了传感器的温度变化。"},
+                new[]{"两处探头的温度差为 2 °C。","两处探头的温差为 2 °C。"},
+                new[]{"We measured the change in temperature.","We measured the temperature change."},
+                new[]{"The relative displacement was 3 mm.","The measured relative displacement was 3 mm."},
                 new[]{"仅纳入浓度 ≥ 5 nM 的样本。","仅纳入浓度 >= 5 nM 的样本。"},
                 new[]{"Samples with p != 0.05 were retained.","We retained samples with p ≠ 0.05."},
                 new[]{"差异与温度有关。","差异与温度相关。"},
@@ -216,6 +220,12 @@ class Regression {
                 Check(invalidModel,"reject empty or nonlocal selector");
             }
             var changesOfMeaning = new[] {
+                new[]{"在测量的过程中，我们对传感器温度进行了记录。","我们在测量过程中记录了传感器的温度变化。"},
+                new[]{"探头温度为 2 °C。","探头温差为 2 °C。"},
+                new[]{"相对位移为 -1.25 mm。","绝对位移为 -1.25 mm。"},
+                new[]{"We recorded the temperature.","We recorded the change in temperature."},
+                new[]{"The temperature difference was 2 °C.","The temperature change was 2 °C."},
+                new[]{"Relative displacement was 3 mm.","Absolute displacement was 3 mm."},
                 new[]{"H1（采样假设）：低照度条件可能增加读数偏差。","G1（采样假设）：低照度条件可能增加读数偏差。"},
                 new[]{"校准结束后再次核对了传感器安装位置。","校准结束后再次核对了传感器安装位置。校准结束后再次核对了传感器安装位置。"},
                 new[]{"纳入条件为 p < 0.05[1]。","纳入条件为 p <= 0.05[1]。"},

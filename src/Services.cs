@@ -56,13 +56,20 @@ internal static class Services {
         const string association = @"(?<association>相关|关联|有关|\b(?i:associat(?:ed|ion)|correlat(?:ed|es|ion)|linked to|related to)\b)";
         const string causation = @"(?<causation>导致|造成|引起|影响|\b(?i:caus(?:e|es|ed)|affect(?:s|ed)?|influenc(?:e|es|ed)|led to|leads? to)\b)";
         const string identifier=@"(?<![A-Za-z0-9])[A-Z]+[0-9]+(?![A-Za-z0-9])";
-        string anchors = "(?:"+citation+"|"+identifier+"|"+measurement+"|"+qualifier+"|"+group+"|"+relation+"|"+direction+"|"+comparison+"|"+association+"|"+causation+")";
+        const string quantity=@"(?<temperatureChange>温度(?:的)?变化|\b(?i:temperature changes?|changes? in temperature)\b)|"+
+            @"(?<temperatureDifference>温度(?:的)?差(?:值|异)?|温差|\b(?i:temperature differences?|differences? in temperature)\b)|"+
+            @"(?<relativeDisplacement>相对位移|\b(?i:relative displacement)\b)|"+
+            @"(?<absoluteDisplacement>绝对位移|\b(?i:absolute displacement)\b)";
+        string anchors = "(?:"+citation+"|"+identifier+"|"+measurement+"|"+quantity+"|"+qualifier+"|"+group+"|"+relation+"|"+direction+"|"+comparison+"|"+association+"|"+causation+")";
         if (String.IsNullOrWhiteSpace(updated) || updated.Contains("\n") || updated.Contains("\r") ||
             updated.Length > text.Length * 2 + 24 ||
             !ProtectedTokens(text,measurement).SequenceEqual(ProtectedTokens(updated,measurement)) ||
             !ProtectedTokens(text,citation).SequenceEqual(ProtectedTokens(updated,citation)) ||
-            !ProtectedTokens(text,anchors).SequenceEqual(ProtectedTokens(updated,anchors)))
-            throw new InvalidDataException("修订可能改变了数值、单位、引文、组别、比较方向、相关与因果表述、结论限定词或段落结构。请逐段核对。");
+            !ProtectedTokens(text,anchors).SequenceEqual(ProtectedTokens(updated,anchors))){
+            if(!ProtectedTokens(text,quantity).SequenceEqual(ProtectedTokens(updated,quantity)))
+                throw new InvalidDataException("修订改变了温度变化、温差或位移参照方式的表述。请核对原文测量的是什么。");
+            throw new InvalidDataException("修订可能改变了观测量、数值、单位、引文、组别、比较方向、相关与因果表述、结论限定词或段落结构。请逐段核对。");
+        }
         var repeated=Regex.Split(updated,@"[。！？!?]|\.(?=\s|$)").Select(s=>s.Trim())
             .Where(s=>s.Length>=12).GroupBy(s=>s).Where(g=>g.Count()>1);
         foreach(var groupOfSentences in repeated){
@@ -72,10 +79,14 @@ internal static class Services {
     }
     static IEnumerable<string> ProtectedTokens(string text,string pattern) {
         return Regex.Matches(text,pattern,RegexOptions.CultureInvariant).Cast<Match>()
-            .Select(m=>m.Groups["comparison"].Success ? m.Value.Replace("<=","≤").Replace(">=","≥").Replace("!=","≠") :
-                       m.Groups["association"].Success ? "<association>" :
-                       m.Groups["causation"].Success ? "<causation>" : Regex.Replace(m.Value,@"\s+",""));
+            .Select(m=>{
+                foreach(string name in normalizedAnchors)
+                    if(m.Groups[name].Success)return "<"+name+">";
+                if(m.Groups["comparison"].Success)return m.Value.Replace("<=","≤").Replace(">=","≥").Replace("!=","≠");
+                return Regex.Replace(m.Value,@"\s+","");
+            });
     }
+    static readonly string[] normalizedAnchors={"association","causation","temperatureChange","temperatureDifference","relativeDisplacement","absoluteDisplacement"};
     internal static string[] ListLocalModels() {
         var req=(HttpWebRequest)WebRequest.Create("http://127.0.0.1:11434/api/tags");
         req.Proxy=null;

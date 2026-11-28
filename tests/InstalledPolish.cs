@@ -62,6 +62,12 @@ class InstalledPolish {
             Require(rows.Items[0].SubItems[3].Text=="模型改动已拦截" && !rows.Items[0].Checked,
                 "installed workspace accepted a reversed split threshold");
             Console.WriteLine("PASS installed workspace rejects split threshold");
+            task=(Task)type.GetMethod("PolishBatch",Fields).Invoke(form,new object[]{new[]{0},"fixture"});
+            Reply(Receive(server,"/api/show"),new{model_info=new{fixture=true}});
+            Reply(Receive(server,"/api/chat"),new{message=new{content=Json.Serialize(new{run0=left,run1=right.Replace("reference solution","solution exhibiting a temperature change")})}});
+            Wait(()=>task.IsCompleted);task.GetAwaiter().GetResult();
+            Require(rows.ShowItemToolTips && rows.Items[0].ToolTipText.Contains("温度变化") && !rows.Items[0].Checked,
+                "workspace must explain the rejected measurement change");
         }finally{if(File.Exists(input))File.Delete(input);}
     }
     [STAThread]static void Main(string[] args){

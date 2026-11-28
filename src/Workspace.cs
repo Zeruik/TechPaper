@@ -38,7 +38,7 @@ internal sealed partial class Workspace : Form {
         file=LabelAt("打开或拖入论文、幻灯片及图像",12);summary=LabelAt("DOCX / PPTX / PDF / PNG / JPG · 可拖放文件",9);
         bar.Controls.Add(file,0,0);bar.Controls.Add(summary,0,1);
         open=ButtonAt("打开文件",Choose);bar.Controls.Add(open,1,0);bar.SetRowSpan(open,2);layout.Controls.Add(bar,0,1);
-        rows=new ListView{Dock=DockStyle.Fill,View=View.Details,FullRowSelect=true,CheckBoxes=true,HideSelection=false,MultiSelect=false,BorderStyle=BorderStyle.FixedSingle};
+        rows=new ListView{Dock=DockStyle.Fill,View=View.Details,FullRowSelect=true,CheckBoxes=true,HideSelection=false,MultiSelect=false,ShowItemToolTips=true,BorderStyle=BorderStyle.FixedSingle};
         rows.Columns.Add("采用",65);rows.Columns.Add("段落",58);rows.Columns.Add("文风提示",150);rows.Columns.Add("修订",100);rows.Columns.Add("正文摘录",550);
         rows.SelectedIndexChanged+=(s,e)=>Preview();rows.ItemCheck+=(s,e)=>{if(doc!=null && e.Index<doc.Items.Count && doc.Items[e.Index].Text==doc.Items[e.Index].Suggested)e.NewValue=CheckState.Unchecked;};
         layout.Controls.Add(rows,0,2);
@@ -195,10 +195,12 @@ internal sealed partial class Workspace : Form {
                     cancel.ThrowIfCancellationRequested();
                     p.Revisions=result;p.Suggested=String.Concat(result);
                 }
-                catch(InvalidDataException){
+                catch(InvalidDataException ex){
+                    rows.Items[i].ToolTipText=ex.Message;
                     rows.Items[i].SubItems[3].Text=p.Suggested==p.Text?"模型改动已拦截":"保留先前建议";
                     skipped++;continue;
                 }
+                rows.Items[i].ToolTipText="";
                 rows.Items[i].Checked=false;
                 if(p.Suggested==p.Text){rows.Items[i].SubItems[3].Text="模型返回原文";unchanged++;}
                 else{rows.Items[i].SubItems[3].Text="模型建议";done++;}

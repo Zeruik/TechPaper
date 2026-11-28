@@ -62,7 +62,7 @@ internal sealed partial class Workspace {
                 catch(Exception ex){MessageBox.Show(dlg,ex.Message);}
             });
             apply.Dock=DockStyle.Bottom;dlg.Controls.Add(field);dlg.Controls.Add(select);dlg.Controls.Add(apply);
-            if(dlg.ShowDialog(this)==DialogResult.OK){rows.Items[selected].SubItems[3].Text="手动建议";rows.Items[selected].Checked=false;Preview();status.Text="已更新预览，请核对并勾选采用。";}
+            if(dlg.ShowDialog(this)==DialogResult.OK){rows.Items[selected].ToolTipText="";rows.Items[selected].SubItems[3].Text="手动建议";rows.Items[selected].Checked=false;Preview();status.Text="已更新预览，请核对并勾选采用。";}
         }
     }
     void PasteParagraphs(){

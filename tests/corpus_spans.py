@@ -1,7 +1,9 @@
 """Check exact local-source ranges against a brute-force oracle and exported HTML."""
 from html import escape
 from pathlib import Path
+import argparse
 import random
+import subprocess
 import sys
 from tempfile import TemporaryDirectory
 from xml.etree import ElementTree as ET
@@ -29,7 +31,7 @@ def reference(source, text):
         i += best
 
 
-def check(folder):
+def check(folder, worker):
     path = folder / "中文 语料.txt"
     prefix = "实验记录使用同一套室温采样程序逐次测量"
     full = prefix + "并复核仪表读数"
@@ -44,9 +46,18 @@ def check(folder):
         root = ET.Element(W+"document")
         paragraph = ET.SubElement(ET.SubElement(root, W+"body"), W+"p")
         ET.SubElement(ET.SubElement(paragraph, W+"r"), W+"t").text = text
+        numeric = ET.SubElement(root.find(W+"body"), W+"p")
+        first = "I recorded the temperature as 22.5."
+        second = " In conclusion, it is worth noting that room conditions varied."
+        ET.SubElement(ET.SubElement(numeric, W+"r"), W+"t").text = first + second
         doc.writestr("word/document.xml", ET.tostring(root))
-    report(folder/"input.docx", folder/"report.html", path)
+    if worker:
+        subprocess.run([worker, folder/"input.docx", folder/"report.html", "--corpus", path], check=True)
+    else:
+        report(folder/"input.docx", folder/"report.html", path)
     html = (folder/"report.html").read_text(encoding="utf8")
+    for sentence, label in [(first, "HUMAN"), (second, "AI")]:
+        assert f"<mark class='{label}'>{sentence}</mark>" in html
     for i, j, length in matches:
         assert f"语料字符 {j}–{j+length} · 段内字符 {i}–{i+length} · {escape(source[j:j+length])}" in html
     assert list(Corpus(None).match_lines(text, 0)) == ["未选择语料"]
@@ -61,6 +72,9 @@ def check(folder):
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--installed-worker", type=Path)
+    args = parser.parse_args()
     with TemporaryDirectory() as temp:
-        check(Path(temp))
+        check(Path(temp), args.installed_worker)
     print("PASS corpus ranges, HTML, and 200 seeded reference comparisons")

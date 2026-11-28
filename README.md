@@ -2,17 +2,17 @@
 
 <img src="assets/logo.png" alt="TechPaper 稿纸与放大镜图标" width="64">
 
-**Windows 离线论文审阅工作台 · 0.9.0-preview.11**
+**Windows 离线论文审阅工作台 · 0.9.0-preview.12**
 
 拖入论文、幻灯片或扫描图，导出带原文高亮和出处的 HTML。DOCX 还可逐段对照修订，保留原稿并另存新文件。界面提供简体中文、亮色、暗色和跟随系统外观。
 
-[下载预览版](https://github.com/Zeruik/TechPaper/releases/tag/v0.9.0-preview.11) · [验证记录](docs/VALIDATION.md) · [研究与方法](docs/RESEARCH.md) · [使用条款](docs/TERMS.txt) · [MIT 许可](LICENSE)
+[下载预览版](https://github.com/Zeruik/TechPaper/releases/tag/v0.9.0-preview.12) · [验证记录](docs/VALIDATION.md) · [研究与方法](docs/RESEARCH.md) · [使用条款](docs/TERMS.txt) · [MIT 许可](LICENSE)
 
 ![用合成材料演示逐段对照](assets/workspace.png)
 
 ## 安装和使用
 
-1. 在 Windows 10/11 x64 运行 TechPaper-Setup-0.9.0-preview.11.exe。阅读并同意条款，选择目录，按需勾选桌面快捷方式。安装范围为当前用户。安装器未作商业代码签名。可用 Get-FileHash 对照发行页 SHA256SUMS.txt。
+1. 在 Windows 10/11 x64 运行 TechPaper-Setup-0.9.0-preview.12.exe。阅读并同意条款，选择目录，按需勾选桌面快捷方式。安装范围为当前用户。安装器未作商业代码签名。可用 Get-FileHash 对照发行页 SHA256SUMS.txt。
 2. 选“打开文件”或拖入单个 DOCX、PPTX、PDF、PNG、JPG。Canva 导出的 PNG/JPG 可直接导入。安装目录 tests/sample.docx 是含表格、图片、修订、编号及引用角标的合成样件。
 3. 选“导出高亮报告”，指定新的 HTML 路径。提取及 OCR 在本机执行，运行时可取消。报告可在断网浏览器中打开。Ctrl+O 打开文件，Ctrl+R 导出报告，Esc 取消正在生成的报告。
 4. 对 DOCX 选择段落，查看原文和修订预览。规则精简建议和本机模型建议起初均未勾选。请勾选要采用的段落。点击“导出 DOCX 副本”，指定新文件名。原稿及已有文件受覆盖保护。
@@ -23,7 +23,7 @@
 | 报告信息 | 范围 |
 | --- | --- |
 | 写作信号 | 透明基线 0.2 按句匹配预定义的模板表达和具体第一人称观测。AI、MIX、HUMAN 均为低置信线索；短句、线索不足时弃答。没有经过概率校准。 |
-| 本地语料命中 | 通过设置选择自己的 UTF-8 TXT，报告列出首个至少 16 个连续相同字符的片段、源文件名与位置。未选择语料时显示未选择。没有网络文献库或语义查重。 |
+| 本地语料命中 | 通过设置选择自己的 UTF-8 TXT，报告列出每个互不重叠且至少 16 个字符的精确匹配，附源文件名、语料位置和段内位置。未选择语料时显示未选择。没有网络文献库或语义查重。 |
 | 位置和覆盖 | 标注 DOCX 部件和段序、PPTX 幻灯片和段序、PDF 页码与可用坐标、图像 OCR 行框。重复句通过位置区分。报告列出已分类、弃答、低置信和跳过数量。 |
 | OCR | 安装包内置 RapidOCR、PP-OCRv4 中英文识别权重、ONNX Runtime 及 PDFium，无需下载语言包。OCR 框以原图或渲染图像素计，识别分数低于 0.75 时跳过分类。多栏、竖排、表格和复杂图像需要复核阅读顺序。 |
 | 在线 GPTZero | DOCX 的主文档段落可通过按钮显式发送。先预览发送文本，再输入自己的 Key 或读取 GPTZERO_API_KEY。显示服务版本和整篇三类概率。套餐和字符数限制由第三方设定。该程序独立于 GPTZero。 |

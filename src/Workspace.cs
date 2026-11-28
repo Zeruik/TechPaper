@@ -231,6 +231,9 @@ internal sealed partial class Workspace : Form {
                     cancel.ThrowIfCancellationRequested();
                     p.Revisions=result;p.Suggested=String.Concat(result);
                 }
+                catch(InvalidOperationException ex){
+                    throw new InvalidOperationException(String.Format("已处理 {0}/{1} 段。{2}",done+unchanged+skipped,indices.Length,ex.Message),ex);
+                }
                 catch(InvalidDataException ex){
                     rows.Items[i].ToolTipText=ex.Message;
                     rows.Items[i].SubItems[3].Text=p.Suggested==p.Text?"模型改动已拦截":"保留先前建议";

@@ -39,6 +39,24 @@ internal static class Services {
                 using(var stream=req.GetRequestStream())stream.Write(bytes,0,bytes.Length);
                 using(var response=req.GetResponse())using(var r=new StreamReader(response.GetResponseStream()))
                     return json.Deserialize<Dictionary<string,object>>(r.ReadToEnd());
+            }catch(WebException ex){
+                cancel.ThrowIfCancellationRequested();
+                if(url!="http://127.0.0.1:11434/api/chat")throw;
+                var response=ex.Response as HttpWebResponse;
+                using(response){
+                    if(response==null){
+                        string reason=ex.Status==WebExceptionStatus.Timeout?"本机模型响应超时。":"与本机 Ollama 的连接中断。";
+                        throw new InvalidOperationException(reason+"请检查模型运行状态后重试。",ex);
+                    }
+                    // Service diagnostics may contain local paths or input. Display only known categories.
+                    using(var reader=new StreamReader(response.GetResponseStream())){
+                        var buffer=new char[4096];
+                        string details=new string(buffer,0,reader.ReadBlock(buffer,0,buffer.Length));
+                        if(Regex.IsMatch(details,@"out of memory|requires more system memory|insufficient (?:system |GPU |video )?memory",RegexOptions.IgnoreCase))
+                            throw new InvalidOperationException("本机模型报告内存或显存不足。请释放内存或选择较小的已安装模型后重试。",ex);
+                    }
+                    throw new InvalidOperationException("本机 Ollama 推理失败（HTTP "+(int)response.StatusCode+"）。请检查模型运行状态。",ex);
+                }
             }catch(Exception){cancel.ThrowIfCancellationRequested();throw;}
         }
     }

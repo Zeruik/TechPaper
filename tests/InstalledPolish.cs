@@ -177,6 +177,24 @@ class InstalledPolish {
             Require(rows.Items[cited].SubItems[3].Text=="保留先前建议" && rows.Items[cited].ToolTipText.Contains("引用所在"),
                 "workspace did not preserve a previous suggestion on citation drift");
             Console.WriteLine("PASS installed citation scope warning preserves earlier suggestion");
+            int remaining=eligible.First(index=>index!=cited);
+            string beforeFailure=rows.Items[remaining].SubItems[3].Text;
+            foreach(string error in new[]{"CUDA error: out of memory","runtime failure"}){
+                batch=(Task)start.Invoke(form,new object[]{new[]{cited,remaining},"fixture"});
+                Reply(Receive(server,"/api/show"),new{model_info=new{fixture=true}});
+                Reply(Receive(server,"/api/chat"),new{message=new{content=Json.Serialize(edits)}});
+                // Use an eligible paragraph for the failing request, keeping the other row untouched.
+                if(batch.IsCompleted)throw new InvalidDataException("second paragraph was not sent");
+                var failed=Receive(server,"/api/chat");failed.Response.StatusCode=500;
+                Reply(failed,new{error=error+" private diagnostic marker"});
+                Wait(()=>batch.IsCompleted);
+                Require(batch.IsFaulted,"inference error lost");
+                var message=batch.Exception.InnerException.Message;
+                Require(message.Contains("1/2") && message.Contains(error.StartsWith("CUDA")?"显存不足":"HTTP 500") &&
+                    !message.Contains("private diagnostic marker") && rows.Items[confirmed].Checked &&
+                    rows.Items[remaining].SubItems[3].Text==beforeFailure,"inference error or selection handling");
+            }
+            Console.WriteLine("PASS memory and generic inference errors, private diagnostics excluded and batch progress preserved");
             batch=(Task)start.Invoke(form,new object[]{new[]{cited},"fixture"});
             Reply(Receive(server,"/api/show"),new{model_info=new{fixture=true}});
             Receive(server,"/api/chat");

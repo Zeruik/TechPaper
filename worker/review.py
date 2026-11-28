@@ -21,7 +21,7 @@ M = "{http://schemas.openxmlformats.org/officeDocument/2006/math}"
 ENGINE = "TechPaper Style Baseline 0.2"
 AI = re.compile(r"值得注意的是|不可忽视的是|综上所述|至关重要|深远影响|it is (?:important|worth) (?:to note|noting)|in conclusion|plays? a (?:crucial|pivotal) role",re.I)
 PERSONAL = re.compile(r"我(?:手工|亲自|记录|重测|重新|测量)|I (?:measured|counted|rechecked|recorded|repeated)\b",re.I)
-SENT = re.compile(r"[^。！？!?\n]+?(?:[。！？!?]+|(?<!\d)\.(?=\s|$)|(?=\n|$))|[\s\S]",re.S)
+SENT = re.compile(r"[^。！？!?\n]+?(?:[。！？!?]+|\.(?=\s|$)|(?=\n|$))|[\s\S]",re.S)
 ocr_engine = None
 
 

@@ -5,13 +5,24 @@ import json
 import sys
 import zipfile
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/"worker"))
-from review import evidence
+from review import SENT, evidence
+
+
+def check_numeric_sentence_boundary():
+    first = "I recorded the temperature as 22.5."
+    second = " In conclusion, it is worth noting that room conditions varied."
+    matches = list(SENT.finditer(first + second))
+    assert [(m.start(), m.end(), m.group(), evidence(m.group())[0]) for m in matches] == [
+        (0, len(first), first, "HUMAN"),
+        (len(first), len(first + second), second, "AI"),
+    ]
 
 def tally(texts):
     scores=collections.Counter(evidence(t)[0] for t in texts)
     return [scores[x] for x in ("AI","MIX","HUMAN","未判断")]
 
 if __name__=="__main__":
+    check_numeric_sentence_boundary()
     with zipfile.ZipFile(sys.argv[1]) as data:
         for suffix in ("Reference-HT.txt","Reference-PE.txt","Combo-4.txt"):
             name=next(n for n in data.namelist() if n.endswith(suffix))

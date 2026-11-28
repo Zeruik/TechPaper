@@ -39,9 +39,14 @@ def evaluate(folder, model):
         counts = defaultdict(Counter)
         ranks = Counter()
         for test in folds:
-            calibration = [low for (paper, language, role), (low, _) in scores.items()
-                           if language == lang and paper not in test and role != "generated"]
-            threshold = max(.95, max(calibration))
+            limits = {}
+            for variant, roles in (("primary-only", {"primary"}),
+                                   ("with-translations", {"primary", "translation"})):
+                calibration = [low for (paper, language, role), (low, _) in scores.items()
+                               if language == lang and paper not in test and role in roles]
+                limits[variant] = max([.95, *calibration])
+                print(lang, variant, "held-out", len(test), "calibration N", len(calibration),
+                      "threshold", limits[variant])
             for paper in test:
                 human_role, = [role for p, language, role in scores if p == paper and language == lang and role != "generated"]
                 human = scores[paper, lang, human_role][0]
@@ -49,10 +54,11 @@ def evaluate(folder, model):
                 ranks[human_role, "higher" if generated > human else "lower" if generated < human else "tie"] += 1
                 for role in (human_role, "generated"):
                     low, high = scores[paper, lang, role]
-                    label = "AI" if low > threshold else "HUMAN" if high <= .05 else "abstain"
-                    counts[role][label] += 1
-        for role, group in sorted(counts.items()):
-            print(lang, role, "AI/HUMAN/abstain", *(group[k] for k in ("AI", "HUMAN", "abstain")))
+                    for variant, threshold in limits.items():
+                        label = "AI" if low > threshold else "HUMAN" if high <= .05 else "abstain"
+                        counts[variant, role][label] += 1
+        for (variant, role), group in sorted(counts.items()):
+            print(lang, variant, role, "AI/HUMAN/abstain", *(group[k] for k in ("AI", "HUMAN", "abstain")))
         for role in ("primary", "translation"):
             print(lang, role, "paired higher/tie/lower", *(ranks[role, k] for k in ("higher", "tie", "lower")))
 

@@ -56,13 +56,44 @@ def rels(z, part):
             for n in ET.fromstring(z.read(path)) if n.get("TargetMode")!="External"}
 
 
-def column_order(rows, width):
+def poster_gutter(rows, width):
+    """Estimate a gutter from pairs of substantial text lines on the same baseline."""
+    votes = []
+    for box, _, _ in rows:
+        xs, ys = zip(*box)
+        if max(xs)-min(xs) >= .10*width:
+            votes.append((min(xs), max(xs), min(ys), max(ys)))
+    cuts = [width * percent / 100 for percent in range(30,71,2)]
+    scores = [0] * len(cuts)
+    margin = width * .02
+    votes.sort(key=lambda bounds: bounds[2])
+    for i, first in enumerate(votes):
+        for j in range(i+1,len(votes)):
+            other = votes[j]
+            if other[2] >= first[3]:
+                break
+            overlap = min(first[3],other[3]) - other[2]
+            if overlap < .6*min(first[3]-first[2], other[3]-other[2]):
+                continue
+            left, right = sorted((first, other))
+            for pos, cut in enumerate(cuts):
+                if left[1]+margin < cut < right[0]-margin:
+                    scores[pos] += 1
+    best = max(scores)
+    if best < 2:
+        return width / 2
+    return min((cut for cut,score in zip(cuts,scores) if score==best), key=lambda cut:abs(width/2-cut))
+
+
+def column_order(rows, width, gutter=None):
     """Read two sustained columns between spanning headings in portrait posters."""
     result=[]
     pending=[]
+    center = width/2 if gutter is None else gutter
+    left_edge, right_edge = center-width*.02, center+width*.02
     def flush():
-        left=[row for row in pending if max(x for x,y in row[0]) < width*.48]
-        right=[row for row in pending if min(x for x,y in row[0]) > width*.52]
+        left=[row for row in pending if max(x for x,y in row[0]) < left_edge]
+        right=[row for row in pending if min(x for x,y in row[0]) > right_edge]
         if min(len(left),len(right)) >= 2:
             top=lambda row:min(y for x,y in row[0])
             if max(min(map(top,left)),min(map(top,right))) < min(max(map(top,left)),max(map(top,right))):
@@ -73,7 +104,7 @@ def column_order(rows, width):
         pending.clear()
     for row in rows:
         xs=[x for x,y in row[0]]
-        if max(xs)<width*.48 or min(xs)>width*.52:
+        if max(xs)<left_edge or min(xs)>right_edge:
             pending.append(row)
         else:
             flush()
@@ -102,7 +133,7 @@ def ocr(image, location, offset=(0,0), columns=False):
     if not results:
         yield location,"","OCR 未识别文字",None
     else:
-        for i,(box,text,prob) in enumerate(column_order(results,image.width) if columns else results,1):
+        for i,(box,text,prob) in enumerate(column_order(results,image.width,poster_gutter(results,image.width)) if columns else results,1):
             text=re.sub(r"(?<=[A-Za-z0-9])\s*丨\s*(?=[A-Za-z])"," | ",text)
             coords=" ".join("%d,%d"%(x+offset[0],y+offset[1]) for x,y in box)
             yield f"{location} / 行 {i} / px {coords}",text,"OCR；阅读顺序待核",float(prob)

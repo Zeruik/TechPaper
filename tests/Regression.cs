@@ -179,11 +179,15 @@ class Regression {
             var p=paragraph(claim,". We checked the cable.");
             p.Elements(w+"r").First().AddAfterSelf(marker);tail.AddAfterSelf(p);tail=p;
         }
+        var observation=paragraph("试件在重复加载过程中出现滞回","曲线捏拢现象");
+        observation.Add(new XElement(w+"r",new XElement(w+"rPr",new XElement(w+"vertAlign",new XAttribute(w+"val","superscript"))),new XElement(w+"t","8")));
+        tail.AddAfterSelf(observation);
         parts["word/document.xml"]=System.Text.Encoding.UTF8.GetBytes(xml.ToString(SaveOptions.DisableFormatting));
         try{
             using(var zip=ZipFile.Open(input,ZipArchiveMode.Create))
                 foreach(var part in parts)using(var stream=zip.CreateEntry(part.Key).Open())
                     stream.Write(part.Value,0,part.Value.Length);
+            var originalBytes=File.ReadAllBytes(input);
             var doc=new Manuscript(input);
             Check(doc.Items[0].Suggested==doc.Items[0].Text,"formatting split is not a new sentence opening");
             Check(doc.Items[1].Suggested=="We repeated the test to measure drift.","safe multi-run rule edit");
@@ -193,11 +197,20 @@ class Regression {
                 Check(rejected && item.Suggested==item.Text,"native reference scope protected on manual edit");
                 item.SetFragment(0,claim.Replace("was warm","felt warm"));
             }
-            doc.Export(output,new HashSet<int>{0,1,2,3},false);
+            var curve=doc.Items[4];
+            curve.SetFragment(0,"本试件在重复加载过程中出现滞回");
+            bool changedMeaning=false;
+            try{curve.SetFragment(1,"曲线展宽现象");}catch(InvalidDataException){changedMeaning=true;}
+            Check(changedMeaning && curve.Suggested=="本试件在重复加载过程中出现滞回曲线捏拢现象8","split technical term guarded without discarding prior safe edit");
+            doc.Export(output,new HashSet<int>{0,1,2,3,4},false);
             var actual=Manuscript.Parse(Read(output)["word/document.xml"]);
             body.Elements(w+"p").Skip(1).First().Descendants(w+"t").Last().Value="to measure drift.";
             foreach(var p in body.Elements(w+"p").Skip(2).Take(2))p.Descendants(w+"t").First().Value=claim.Replace("was warm","felt warm");
+            observation.Descendants(w+"t").First().Value="本试件在重复加载过程中出现滞回";
+            Check(new Manuscript(output).Items[4].Text==curve.Suggested,
+                  "edited observation reopens beside its superscript");
             Check(XNode.DeepEquals(xml.Root,actual.Root),"only confirmed text changes in multi-run roundtrip");
+            Check(originalBytes.SequenceEqual(File.ReadAllBytes(input)),"source DOCX unchanged after rejected observation and accepted edit");
         }finally{File.Delete(input);File.Delete(output);}
     }
     static void Main(string[] args) {
@@ -433,6 +446,11 @@ class Regression {
                 new[]{"该指标与温度呈正向关联。","该指标与温度呈反向关联。"},
                 new[]{"样本符合纳入标准。","样本符合排除标准。"},
                 new[]{"结果支持该假设。","结果推翻该假设。"},
+                new[]{"滞回曲线捏拢增强。","滞回曲线更清晰。"},
+                new[]{"试件出现滞回环捏拢。","试件出现滞回环展宽。"},
+                new[]{"滞回捏拢增强。","滞回捏拢减弱。"},
+                new[]{"Hysteresis loop pinching intensified.","Hysteresis loop pinching weakened."},
+                new[]{"We observed hysteresis loop pinching.","We observed a clearer hysteresis loop."},
                 new[]{"只有甲组达标。","甲组也达标。"},
                 new[]{"甲组达标，只有乙组复测。","只有甲组达标，乙组复测。"},
                 new[]{"仅末次读数超过 7。","末次读数超过 7。"},
@@ -450,6 +468,9 @@ class Regression {
             Check(blocked==changesOfMeaning.Length, "new scientific counterexamples blocked: "+blocked+"/"+changesOfMeaning.Length);
             Services.ValidateRevision("我们对 5 s 序列的峰值进行了比较[1]。","我们比较了 5 s 序列的峰值[1]。");
             Services.ValidateRevision("We timed it.","We measured its duration.");
+            Services.ValidateRevision("试件出现滞回捏拢。","试件出现滞回曲线的捏拢。");
+            Services.ValidateRevision("滞回环捏拢增强。","滞回环捏拢加剧。");
+            Services.ValidateRevision("We observed hysteresis-loop pinching.","We observed pinching of the hysteresis loop.");
             foreach(var pair in new[]{
                 new[]{"探头已经归零。","The probe was reset."},
                 new[]{"We sealed the jar.","我们密封了容器。"},

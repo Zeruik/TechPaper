@@ -111,7 +111,8 @@ internal static class Services {
         const string quantity=@"(?<temperatureChange>温度(?:的)?变化|\b(?i:temperature changes?|changes? in temperature)\b)|"+
             @"(?<temperatureDifference>温度(?:的)?差(?:值|异)?|温差|\b(?i:temperature differences?|differences? in temperature)\b)|"+
             @"(?<relativeDisplacement>相对位移|\b(?i:relative displacement)\b)|"+
-            @"(?<absoluteDisplacement>绝对位移|\b(?i:absolute displacement)\b)";
+            @"(?<absoluteDisplacement>绝对位移|\b(?i:absolute displacement)\b)|"+
+            @"(?<loopPinching>滞回(?:曲线|环|回线)?(?:的)?捏拢|\b(?i:hysteresis(?:[- ]loop)? pinching|pinching of (?:the )?hysteresis loop)\b)";
         const string question=@"(?<abilityQuestion>能否|可否|是否(?:能够|可以|能))|(?<openQuestion>是否|\b(?i:whether(?: or not)?)\b)";
         const string purpose=@"为(?:了)?便于|以便(?:于)?|以方便|便于|旨在|目的是|为了";
         const string counted=@"(?<chineseCount>[零一二两三四五六七八九十百千万]+(?:项|组|种|次|类|处|份))";
@@ -128,6 +129,8 @@ internal static class Services {
         string anchors = "(?:"+citation+"|"+identifier+"|"+measurement+"|"+quantity+"|"+question+"|"+counted+"|"+condition+"|"+port+"|"+qualifier+"|"+group+"|"+numericChange+"|"+relation+"|"+direction+"|"+comparison+"|"+association+"|"+causation+")";
         if(Regex.IsMatch(text, "只有|仅") || Regex.IsMatch(updated, "只有|仅"))
             anchors = endpoint+"|"+anchors;
+        if(Regex.IsMatch(text, "捏拢|\\bpinching\\b", RegexOptions.IgnoreCase))
+            anchors = @"(?<stronger>增强|加剧|加重|\b(?i:stronger|intensified)\b)|(?<weaker>减弱|减轻|缓解|\b(?i:weaker|weakened)\b)|"+anchors;
         if (String.IsNullOrWhiteSpace(updated) || updated.Contains("\n") || updated.Contains("\r") ||
             updated.Length > text.Length * 2 + 24 ||
             !ProtectedTokens(text,measurement).SequenceEqual(ProtectedTokens(updated,measurement)) ||
@@ -140,7 +143,7 @@ internal static class Services {
             if(!ProtectedTokens(text,condition).SequenceEqual(ProtectedTokens(updated,condition)))
                 throw new InvalidDataException("接线方式或加载工况发生变化，请核对每个读数对应的工况。");
             if(!ProtectedTokens(text,quantity).SequenceEqual(ProtectedTokens(updated,quantity)))
-                throw new InvalidDataException("修订改变了温度变化、温差或位移参照方式的表述。请核对原文测量的是什么。");
+                throw new InvalidDataException("修订改变了观测量或曲线特征的表述，请核对每个测点的物理含义。");
             if(!ProtectedTokens(text,question).SequenceEqual(ProtectedTokens(updated,question)))
                 throw new InvalidDataException("研究问题中的疑问限定发生变化，请核对待检验的问题是否被写成了结论。");
             if(!ProtectedTokens(text,counted).SequenceEqual(ProtectedTokens(updated,counted)))
@@ -209,7 +212,7 @@ internal static class Services {
                 return Regex.Replace(m.Value,@"\s+","");
             });
     }
-    static readonly string[] normalizedAnchors={"before","association","causation","temperatureChange","temperatureDifference","relativeDisplacement","absoluteDisplacement","openQuestion","abilityQuestion","eccentricLoad","centeredLoad","loading","unloading","inlet","outlet","upTo","downTo","upBy","downBy","exclusive","firstReading","lastReading","firstRound","lastRound"};
+    static readonly string[] normalizedAnchors={"before","association","causation","temperatureChange","temperatureDifference","relativeDisplacement","absoluteDisplacement","loopPinching","stronger","weaker","openQuestion","abilityQuestion","eccentricLoad","centeredLoad","loading","unloading","inlet","outlet","upTo","downTo","upBy","downBy","exclusive","firstReading","lastReading","firstRound","lastRound"};
     internal static string[] ListLocalModels() {
         var req=(HttpWebRequest)WebRequest.Create("http://127.0.0.1:11434/api/tags");
         req.Proxy=null;

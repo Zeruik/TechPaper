@@ -17,12 +17,25 @@ def check_numeric_sentence_boundary():
         (len(first), len(first + second), second, "AI"),
     ]
 
+
+def check_first_person_boundary():
+    for sentence, label in (
+        ("The API recorded 120 frames during the trial.", "未判断"),
+        ("The AI measured the gap at 0.25 mm.", "未判断"),
+        ("In conclusion, the API recorded 120 frames.", "未判断"),
+        ("In conclusion, it is worth noting that the API recorded 120 frames.", "AI"),
+        ("During the trial, I recorded 120 frames.", "HUMAN"),
+        ("In conclusion, I recorded 120 frames.", "MIX"),
+    ):
+        assert evidence(sentence)[0] == label, sentence
+
 def tally(texts):
     scores=collections.Counter(evidence(t)[0] for t in texts)
     return [scores[x] for x in ("AI","MIX","HUMAN","未判断")]
 
 if __name__=="__main__":
     check_numeric_sentence_boundary()
+    check_first_person_boundary()
     with zipfile.ZipFile(sys.argv[1]) as data:
         for suffix in ("Reference-HT.txt","Reference-PE.txt","Combo-4.txt"):
             name=next(n for n in data.namelist() if n.endswith(suffix))

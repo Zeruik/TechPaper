@@ -18,9 +18,9 @@ A = "{http://schemas.openxmlformats.org/drawingml/2006/main}"
 R = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}"
 P = "{http://schemas.openxmlformats.org/presentationml/2006/main}"
 M = "{http://schemas.openxmlformats.org/officeDocument/2006/math}"
-ENGINE = "TechPaper Style Baseline 0.2"
+ENGINE = "TechPaper Style Baseline 0.2.1"
 AI = re.compile(r"值得注意的是|不可忽视的是|综上所述|至关重要|深远影响|it is (?:important|worth) (?:to note|noting)|in conclusion|plays? a (?:crucial|pivotal) role",re.I)
-PERSONAL = re.compile(r"我(?:手工|亲自|记录|重测|重新|测量)|I (?:measured|counted|rechecked|recorded|repeated)\b",re.I)
+PERSONAL = re.compile(r"我(?:手工|亲自|记录|重测|重新|测量)|\bI (?:measured|counted|rechecked|recorded|repeated)\b",re.I)
 SENT = re.compile(r"[^。！？!?\n]+?(?:[。！？!?]+|\.(?=\s|$)|(?=\n|$))|[\s\S]",re.S)
 ocr_engine = None
 
@@ -30,11 +30,11 @@ def evidence(sentence):
         return "未判断", "不足", "短句，线索不足"
     a, h = len(AI.findall(sentence)), bool(PERSONAL.search(sentence) and re.search(r"\d",sentence))
     if a and h:
-        return "MIX","低","模板措辞与具体第一人称观测同时出现"
+        return "MIX","低","模板措辞、第一人称观测表述和数字同时出现；生成文本也可含这些线索"
     if a >= 2:
         return "AI","低","至少两处预定义模板措辞"
     if h:
-        return "HUMAN","低","第一人称实测描述与数字同时出现"
+        return "HUMAN","低","第一人称观测表述和数字同时出现；生成文本也可含这些线索"
     return "未判断","不足","无足够的预定义线索"
 
 

@@ -42,6 +42,14 @@ class DesktopChecks {
             ctx.Response.ContentLength64=answer.Length;ctx.Response.Close(answer,false);
             Pump(()=>plain.IsCompleted);Check(plain.Result==left,"safe single run response");
         }
+        const string readings="  We recorded 4 g, 4\u00a0g, and 4g at 12\u202fPa. ";
+        var measured=Task.Run(()=>Services.PolishForBatch(readings,"fixture","",CancellationToken.None));
+        var readingRequest=server.GetContextAsync();Pump(()=>readingRequest.IsCompleted);
+        var readingBytes=Encoding.UTF8.GetBytes(json.Serialize(new{message=new{content="We measured 4g, 4g, and 4 g at 12Pa."}}));
+        readingRequest.Result.Response.ContentLength64=readingBytes.Length;
+        readingRequest.Result.Response.Close(readingBytes,false);
+        Pump(()=>measured.IsCompleted);
+        Check(measured.Result==readings.Replace("recorded","measured"),"model edit keeps each occurrence's original unit spacing");
         foreach(string mode in new[]{"valid","punctuation","protected","missing","splitClaim","duplicate","inventedMethod"}){
             var task=Task.Run(()=>Services.PolishParagraph(passage,"fixture","",CancellationToken.None,2));
             var request=server.GetContextAsync();Pump(()=>request.IsCompleted);

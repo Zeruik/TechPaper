@@ -71,10 +71,10 @@ internal static class Services {
            !CitationClauses(text).SequenceEqual(CitationClauses(updated)))
             throw new InvalidDataException("引用所在的句子或分号分隔的论断发生变化，请核对引用归属。");
     }
+    const string number = @"[+\-−±]?\d+(?:[.,]\d+)*(?:[eE][+\-]?\d+)?";
+    const string unit = @"(?:(?:[fpnμµumkM]?mol/(?:mL|L))|[fpnμµum]?M|m/s²|m/s|mm²|cm²|m²|mm³|cm³|m³|kPa|MPa|Pa|kHz|MHz|Hz|mm|cm|km|kg|mg|μg|µg|mL|ms|μs|µs|min|mol|m|g|L|s|h|K|V|A|W)(?![A-Za-z])|%|‰|℃|°[CF]|毫米|厘米|千米|千克|毫克|分钟|小时|摄氏度|毫升|秒";
+    const string measurement = number + @"(?:\s*(?:" + unit + @"))?";
     internal static void ValidateRevision(string text,string updated) {
-        const string number = @"[+\-−±]?\d+(?:[.,]\d+)*(?:[eE][+\-]?\d+)?";
-        const string unit = @"(?:(?:[fpnμµumkM]?mol/(?:mL|L))|[fpnμµum]?M|m/s²|m/s|mm²|cm²|m²|mm³|cm³|m³|kPa|MPa|Pa|kHz|MHz|Hz|mm|cm|km|kg|mg|μg|µg|mL|ms|μs|µs|min|mol|m|g|L|s|h|K|V|A|W)(?![A-Za-z])|%|‰|℃|°[CF]|毫米|厘米|千米|千克|毫克|分钟|小时|摄氏度|毫升|秒";
-        string measurement = number + @"(?:\s*(?:" + unit + @"))?";
         const string qualifier = @"不能|无法|尚未|并未|未能|未见|没有|并非|不显著|不确定|可能|仅限|\b(?i:not|no|never|cannot|may|might|only)\b";
         const string group = @"(?:样品|试样|材料|样本|试剂|方案|条件)\s*[甲乙丙丁A-Z](?![A-Za-z])|(?:实验|对照|处理|干预|基线|安慰剂|空白|观察|治疗)组|(?:组\s*[A-Z甲乙丙丁]|[A-Z甲乙丙丁]\s*组)|\b(?i:(?:group|arm)\s+[a-z0-9]+|control|treatment|placebo|intervention)\b";
         const string direction = @"高于|低于|小于|大于|超过|优于|劣于|上升|下降|增加|减少|升高|降低|正相关|负相关|提示|证明|证实|必然|显著|未|不|无|\b(?i:higher|lower|greater|less|more|increase[d]?|decrease[d]?|suggests?|proves?|confirms?|significant(?:ly)?|must)\b";
@@ -223,6 +223,14 @@ internal static class Services {
     }
     static string CheckedFragment(string original,string proposed){
         ValidateRevision(original,proposed);
+        // Validation established a one-to-one sequence of identical numbers and units.
+        // Keep the author's unit spacing even when a model normalizes nonbreaking spaces.
+        var sourceMeasurements=Regex.Matches(original,measurement);
+        int position=0;
+        proposed=Regex.Replace(proposed,measurement,m=>{
+            string source=sourceMeasurements[position++].Value;
+            return source.IndexOfAny(new[]{'\r','\n'})<0?source:m.Value;
+        });
         // Runs can meet at an English word boundary or immediately beside a citation.
         return original.Substring(0,original.Length-original.TrimStart().Length)+proposed.Trim()+
             original.Substring(original.TrimEnd().Length);

@@ -32,7 +32,7 @@ def main():
                     if e.file_size:scan(z.read(e),depth+1)
     def git(*args):return subprocess.check_output(["git",*args])
     def checkpath(name):
-        if not re.fullmatch(r"(?:\.gitignore|README\.md|LICENSE|build(?:-worker)?\.ps1|installer\.iss|examples/modern-review/(?:make_example\.py|before\.(?:txt|docx)|after\.(?:txt|docx)|README\.md)|assets/(?:logo\.png|workspace\.png|TechPaper\.ico|manuscript-review-icon\.svg)|docs/(?:TERMS\.txt|RESEARCH\.md|VALIDATION\.md)|src/[A-Za-z]+\.cs|src/app\.manifest|tests/(?:sample\.docx|[A-Za-z_]+\.py|[A-Za-z]+\.cs)|worker/(?:review\.py|notices\.py|requirements\.lock))",name):raise SystemExit("Unapproved Git path")
+        if not re.fullmatch(r"(?:\.gitignore|README\.md|LICENSE|build(?:-worker)?\.ps1|installer\.iss|examples/modern-review/(?:make_example\.py|before\.(?:txt|docx)|after\.(?:txt|docx)|README\.md)|assets/(?:logo\.png|workspace\.png|TechPaper\.ico|manuscript-review-icon\.svg)|docs/(?:TERMS\.txt|RESEARCH\.md|VALIDATION\.md|EDITORIAL-PROMPT\.zh-CN\.md)|src/[A-Za-z]+\.cs|src/app\.manifest|tests/(?:sample\.docx|[A-Za-z_]+\.py|[A-Za-z]+\.cs)|worker/(?:review\.py|notices\.py|requirements\.lock))",name):raise SystemExit("Unapproved Git path")
     for line in git("ls-files","-s","-z").split(b"\0"):
         if line:
             attrs,name=line.split(b"\t",1);checkpath(name.decode());scan(git("cat-file","blob",attrs.split()[1].decode()))

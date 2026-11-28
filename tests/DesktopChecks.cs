@@ -2,6 +2,9 @@
 using System.Diagnostics;
 using System.Drawing;
 using System.IO;
+using System.Net;
+using System.Net.Sockets;
+using System.Text;
 using System.Linq;
 using System.Reflection;
 using System.Threading;
@@ -9,6 +12,39 @@ using System.Threading.Tasks;
 using System.Windows.Forms;
 using TechPaper;
 class DesktopChecks {
+    sealed class LocalFixture : IWebRequestCreate {
+        public Uri Address;
+        public WebRequest Create(Uri uri){return WebRequest.CreateDefault(new Uri(Address,uri.AbsolutePath));}
+    }
+    static void CheckModelStop(Workspace form,ListView rows,Manuscript manuscript,int adopted){
+        var reserve=new TcpListener(IPAddress.Loopback,0);
+        reserve.Start();
+        var address=new Uri("http://127.0.0.1:"+((IPEndPoint)reserve.LocalEndpoint).Port+"/");
+        reserve.Stop();
+        using(var server=new HttpListener()){
+            server.Prefixes.Add(address.AbsoluteUri);
+            server.Start();
+            Check(WebRequest.RegisterPrefix("http://127.0.0.1:11434/api/",new LocalFixture{Address=address}),"test-only local model fixture");
+            rows.Items[adopted].Checked=true;
+            var indices=form.PolishIndices(true);
+            Check(indices.Length>0 && !indices.Contains(adopted),"keep confirmed paragraph outside batch");
+            var saved=manuscript.Items.Select(p=>p.Suggested).ToArray();
+            var batch=form.PolishBatch(indices,"synthetic-model");
+            var show=server.GetContextAsync();Pump(()=>show.IsCompleted);
+            Check(show.Result.Request.Url.AbsolutePath=="/api/show","metadata before text");
+            var response=Encoding.UTF8.GetBytes("{\"model_info\":{\"fixture\":true}}");
+            show.Result.Response.ContentLength64=response.Length;
+            show.Result.Response.Close(response,false);
+            var chat=server.GetContextAsync();Pump(()=>chat.IsCompleted);
+            Check(chat.Result.Request.Url.AbsolutePath=="/api/chat","synthetic generation pending");
+            var watch=Stopwatch.StartNew();
+            form.StopPolishing();
+            Pump(()=>batch.IsCompleted);batch.GetAwaiter().GetResult();
+            Check(watch.Elapsed.TotalSeconds<5,"stop without waiting for model reply");
+            Check(rows.Items[adopted].Checked && saved.SequenceEqual(manuscript.Items.Select(p=>p.Suggested)),"cancel preserves prior suggestions and selection");
+            rows.Items[adopted].Checked=false;
+        }
+    }
     static void Check(bool result,string name){if(!result)throw new Exception(name);Console.WriteLine("PASS "+name);}
     static void Pump(Func<bool> done){var t=Stopwatch.StartNew();while(!done()){Application.DoEvents();Thread.Sleep(10);if(t.Elapsed.TotalSeconds>90)throw new TimeoutException();}}
     static System.Collections.Generic.IEnumerable<Control> Walk(Control c){foreach(Control child in c.Controls){yield return child;foreach(var item in Walk(child))yield return item;}}
@@ -43,6 +79,7 @@ class DesktopChecks {
             }
             var manuscript=(Manuscript)typeof(Workspace).GetField("doc",BindingFlags.Instance|BindingFlags.NonPublic).GetValue(f);
             int adopted=manuscript.Items.FindIndex(item=>item.Text!=item.Suggested);
+            CheckModelStop(f,rows,manuscript,adopted);
             rows.Items[adopted].Selected=true;
             var modeField=typeof(Workspace).GetField("theme",BindingFlags.Instance|BindingFlags.NonPublic);
             var applyTheme=typeof(Workspace).GetMethod("ApplyTheme",BindingFlags.Instance|BindingFlags.NonPublic);

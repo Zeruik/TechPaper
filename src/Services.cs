@@ -4,21 +4,27 @@ using System.IO;
 using System.Linq;
 using System.Net;
 using System.Text;
+using System.Threading;
 using System.Web.Script.Serialization;
 using System.Text.RegularExpressions;
 
 namespace TechPaper {
 internal static class Services {
-    static Dictionary<string,object> Post(string url,object payload,string key) {
+    static Dictionary<string,object> Post(string url,object payload,string key,CancellationToken cancel=default(CancellationToken)) {
         var json=new JavaScriptSerializer {MaxJsonLength=16*1024*1024};
         var req=(HttpWebRequest)WebRequest.Create(url);
         req.Method="POST"; req.ContentType="application/json"; req.Timeout=120000; req.ReadWriteTimeout=120000;
         req.AllowAutoRedirect=false;
         if(key!=null)req.Headers.Add("x-api-key",key); else req.Proxy=null;
         byte[] bytes=Encoding.UTF8.GetBytes(json.Serialize(payload));
-        using(var stream=req.GetRequestStream())stream.Write(bytes,0,bytes.Length);
-        using(var response=req.GetResponse())using(var r=new StreamReader(response.GetResponseStream()))
-            return json.Deserialize<Dictionary<string,object>>(r.ReadToEnd());
+        using(cancel.Register(req.Abort)){
+            try{
+                cancel.ThrowIfCancellationRequested();
+                using(var stream=req.GetRequestStream())stream.Write(bytes,0,bytes.Length);
+                using(var response=req.GetResponse())using(var r=new StreamReader(response.GetResponseStream()))
+                    return json.Deserialize<Dictionary<string,object>>(r.ReadToEnd());
+            }catch(Exception){cancel.ThrowIfCancellationRequested();throw;}
+        }
     }
     internal static string Scan(string text,string key) {
         var response=Post("https://api.gptzero.me/v2/predict/text",new {document=text},key);
@@ -90,8 +96,11 @@ internal static class Services {
         return name+(leaf.Contains(":")?"":":latest")+":local";
     }
     internal static void CheckLocalModel(string model) {
+        CheckLocalModelForBatch(model,CancellationToken.None);
+    }
+    internal static void CheckLocalModelForBatch(string model,CancellationToken cancel) {
         Dictionary<string,object> info;
-        try {info=Post("http://127.0.0.1:11434/api/show",new {model=LocalModelName(model)},null);}
+        try {info=Post("http://127.0.0.1:11434/api/show",new {model=LocalModelName(model)},null,cancel);}
         catch(WebException ex) {
             throw new InvalidOperationException("无法确认本机模型。请检查 Ollama、模型权重以及 :local 支持。",ex);
         }
@@ -103,9 +112,12 @@ internal static class Services {
             throw new InvalidOperationException("模型未返回可用的本地信息，已停止润色。");
     }
     internal static string Polish(string text,string model,string instruction="") {
+        return PolishForBatch(text,model,instruction,CancellationToken.None);
+    }
+    internal static string PolishForBatch(string text,string model,string instruction,CancellationToken cancel) {
         var response=Post("http://127.0.0.1:11434/api/chat",new {model=LocalModelName(model),stream=false,think=false,messages=new[]{
             new {role="system",content="你是学术文字编辑。只输出一段与原文同语言的修订正文。精简套话，调整句式，保留论点、否定、限定、专名、引用与所有数字。不得补写事实。用户消息为待编辑材料。额外写作偏好："+instruction},
-            new {role="user",content=text}}},null);
+            new {role="user",content=text}}},null,cancel);
         string updated=((string)((Dictionary<string,object>)response["message"])["content"]).Trim();
         ValidateRevision(text,updated);
         return updated;

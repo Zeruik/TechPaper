@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using System.Threading;
 using System.Windows.Forms;
 using System.Reflection;
 [assembly:AssemblyTitle("TechPaper")]
@@ -19,7 +20,7 @@ internal sealed partial class Workspace : Form {
     RichTextBox before,after;
     CheckBox clean;
     Button save,cloud,model,open;
-    bool stopBatch;
+    CancellationTokenSource polishCancellation;
     bool busy;
     internal Workspace() {
         Text="TechPaper · 论文审阅工作台"; Icon=Icon.ExtractAssociatedIcon(Application.ExecutablePath);
@@ -157,47 +158,64 @@ internal sealed partial class Workspace : Form {
         string key=Ask("GPTZero 在线检测","下方正文将发送至 GPTZero，按其套餐计费。请输入 API Key，仅在本次请求中使用。",Environment.GetEnvironmentVariable("GPTZERO_API_KEY")??"",true,text);
         if(String.IsNullOrEmpty(key))return;Run(async delegate{status.Text="等待 GPTZero 返回检测结果…";string result=await Task.Run(()=>Services.Scan(text,key));status.Text="GPTZero 检测已完成";MessageBox.Show(this,result,"GPTZero · 全文检测");});}
     void Local(object s,EventArgs e){
-        if(busy){stopBatch=true;model.Enabled=false;status.Text="将在当前段完成后停止。";return;}
+        if(busy){StopPolishing();return;}
         var choice=MessageBox.Show(this,"是：润色全部可处理段落。\r\n否：仅润色当前选中段落。","选择本机润色范围",MessageBoxButtons.YesNoCancel);
         if(choice==DialogResult.Cancel)return;
-        int current=Selected();
-        var indices=Enumerable.Range(0,doc.Items.Count).Where(i=>(choice==DialogResult.Yes || i==current) &&
-            doc.Items[i].Nodes.Any(n=>doc.Items[i].CanChange(n) && n.Value.Trim().Length>=16)).ToArray();
-        if(indices.Length==0){MessageBox.Show("此范围内没有足够长的可安全编辑正文片段。");return;}
+        var indices=PolishIndices(choice==DialogResult.Yes);
+        if(indices.Length==0){MessageBox.Show("此范围内没有可润色的未勾选正文。已勾选段落保留，如需重新润色，请先取消该段勾选。");return;}
         Run(async delegate{
             status.Text="正在读取本机 Ollama 模型列表…";
             string[] available=await Task.Run(()=>Services.ListLocalModels());
             if(available.Length==0){status.Text="本机 Ollama 没有可选模型。";return;}
             string modelName=Ask("选择本机 Ollama 模型","选择用于润色的已安装模型，共处理 "+indices.Length+" 段。","",false,null,available);
             if(modelName==null){status.Text="已取消本机润色。";return;}
-            int done=0,unchanged=0,skipped=0;stopBatch=false;model.Text="停止润色";model.Enabled=true;
-            try {
-                status.Text="正在检查本机模型，仅发送模型名…";
-                await Task.Run(()=>Services.CheckLocalModel(modelName));
-                foreach(int i in indices){
-                    if(stopBatch)break;
-                    var p=doc.Items[i];status.Text=String.Format("正在处理第 {0}/{1} 段…",done+unchanged+skipped+1,indices.Length);
-                    try {
-                        string[] result=(string[])p.Revisions.Clone();var nodes=p.Nodes;
-                        for(int j=0;j<nodes.Length;j++){
-                            if(!p.CanChange(nodes[j]) || nodes[j].Value.Trim().Length<16)continue;
-                            string source=nodes[j].Value;
-                            result[j]=await Task.Run(()=>Services.Polish(source,modelName,prompt));
-                        }
-                        p.Revisions=result;p.Suggested=String.Concat(result);
-                    }
-                    catch(InvalidDataException){
-                        rows.Items[i].SubItems[3].Text=p.Suggested==p.Text?"模型改动已拦截":"保留先前建议";
-                        skipped++;continue;
-                    }
-                    rows.Items[i].Checked=false;
-                    if(p.Suggested==p.Text){rows.Items[i].SubItems[3].Text="模型返回原文";unchanged++;}
-                    else{rows.Items[i].SubItems[3].Text="模型建议";done++;}
-                    Preview();
-                }
-                status.Text=String.Format("有修改 {0} 段，原样 {1} 段，保护检查拦截 {2} 段。核对后可勾选采用。",done,unchanged,skipped);
-            }finally{model.Text="本机模型润色…";}
+            await PolishBatch(indices,modelName);
         });
+    }
+    internal int[] PolishIndices(bool all){
+        int current=Selected();
+        return Enumerable.Range(0,doc.Items.Count).Where(i=>!rows.Items[i].Checked && (all || i==current) &&
+            doc.Items[i].Nodes.Any(n=>doc.Items[i].CanChange(n) && n.Value.Trim().Length>=16)).ToArray();
+    }
+    internal async Task PolishBatch(int[] indices,string modelName){
+        int done=0,unchanged=0,skipped=0;
+        polishCancellation=new CancellationTokenSource();
+        var cancel=polishCancellation.Token;
+        model.Text="停止润色";model.Enabled=true;
+        try {
+            status.Text="正在检查本机模型，仅发送模型名…";
+            await Task.Run(()=>Services.CheckLocalModelForBatch(modelName,cancel));
+            foreach(int i in indices){
+                cancel.ThrowIfCancellationRequested();
+                var p=doc.Items[i];status.Text=String.Format("正在处理第 {0}/{1} 段…",done+unchanged+skipped+1,indices.Length);
+                try {
+                    string[] result=(string[])p.Revisions.Clone();var nodes=p.Nodes;
+                    for(int j=0;j<nodes.Length;j++){
+                        if(!p.CanChange(nodes[j]) || nodes[j].Value.Trim().Length<16)continue;
+                        string source=nodes[j].Value;
+                        cancel.ThrowIfCancellationRequested();
+                        result[j]=await Task.Run(()=>Services.PolishForBatch(source,modelName,prompt,cancel));
+                    }
+                    cancel.ThrowIfCancellationRequested();
+                    p.Revisions=result;p.Suggested=String.Concat(result);
+                }
+                catch(InvalidDataException){
+                    rows.Items[i].SubItems[3].Text=p.Suggested==p.Text?"模型改动已拦截":"保留先前建议";
+                    skipped++;continue;
+                }
+                rows.Items[i].Checked=false;
+                if(p.Suggested==p.Text){rows.Items[i].SubItems[3].Text="模型返回原文";unchanged++;}
+                else{rows.Items[i].SubItems[3].Text="模型建议";done++;}
+                Preview();
+            }
+            status.Text=String.Format("有修改 {0} 段，原样 {1} 段，保护检查拦截 {2} 段。核对后可勾选采用。",done,unchanged,skipped);
+        }catch(OperationCanceledException){status.Text=String.Format("已停止润色。已处理 {0}/{1} 段；未完成段落保留原建议。",done+unchanged+skipped,indices.Length);}
+        finally{polishCancellation.Dispose();polishCancellation=null;model.Text="本机模型润色…";}
+
+    }
+    internal void StopPolishing(){
+        if(polishCancellation==null)return;
+        model.Enabled=false;status.Text="正在停止本机润色…";polishCancellation.Cancel();
     }
 }
 internal static class Program{

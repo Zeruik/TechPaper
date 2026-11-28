@@ -127,6 +127,8 @@ internal static class Services {
             if(Regex.Matches(text,method).Count!=Regex.Matches(updated,method).Count)
                 throw new InvalidDataException("修订改变了重复试验、数据收集或数据规模的表述，请核对原文是否记载该方法。");
         }
+        if(SampleMassRoleChanged(text,updated) || SampleMassRoleChanged(updated,text))
+            throw new InvalidDataException("样品的已知质量与实际测量对象可能发生互换，请核对实验方法。");
         ValidateCitationScope(text,updated);
         if(DoubledParagraph(updated) && !DoubledParagraph(text))
             throw new InvalidDataException("修订将同一段内容输出了两遍，请核对重复部分。");
@@ -136,6 +138,19 @@ internal static class Services {
             if(Regex.Split(text,@"[。！？!?]|\.(?=\s|$)").Count(s=>s.Trim()==groupOfSentences.Key)<groupOfSentences.Count())
                 throw new InvalidDataException("修订新增了重复句，请检查是否重复输出同一段。");
         }
+    }
+    // Only flag a lost numerical sample description together with a newly stated mass measurement.
+    const string massUnit=@"(?:kg|mg|[μµu]g|g|千克|毫克|克)(?![A-Za-z])";
+    const string massValue=number+@"\s*"+massUnit;
+    static readonly Regex sampleWithMass=new Regex(
+        @"质量(?:分别)?为\s*"+massValue+@"(?:\s*(?:和|与|、|及)\s*"+massValue+@")*\s*的(?:[一二两三四五六七八九十\d]+个)?(?:样品|样本|试样)|"+
+        @"\b(?i:(?:samples?|specimens?)\s+(?:with|of)\s+(?:a\s+)?mass(?:es)?\s+of)\s*"+massValue);
+    static readonly Regex measuredMass=new Regex(
+        @"(?:测量|测定|记录)(?:了)?(?:[一二两三四五六七八九十\d]+个)?(?:(?:样品|样本|试样)的?)?质量(?!为)|"+
+        @"\b(?i:(?:measured|recorded|determined)\s+(?:the\s+)?(?:sample\s+)?mass(?:es)?\b)");
+    static bool SampleMassRoleChanged(string original,string proposed){
+        return sampleWithMass.Matches(original).Count>sampleWithMass.Matches(proposed).Count &&
+            measuredMass.Matches(original).Count<measuredMass.Matches(proposed).Count;
     }
     static readonly string[] reportedMethods={
         @"(?:反复|多次|重复)(?:进行|开展)?(?:了)?(?:试验|实验)|\b(?i:repeat(?:ed|ing)? (?:the |these )?(?:experiments?|trials?)|(?:experiments?|trials?) (?:was|were) repeated)\b",

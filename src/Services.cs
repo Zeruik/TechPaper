@@ -108,11 +108,12 @@ internal static class Services {
         const string association = @"(?<association>相关|关联|有关|\b(?i:associat(?:ed|ion)|correlat(?:ed|es|ion)|linked to|related to)\b)";
         const string causation = @"(?<causation>导致|造成|引起|影响|\b(?i:caus(?:e|es|ed)|affect(?:s|ed)?|influenc(?:e|es|ed)|led to|leads? to)\b)";
         const string identifier=@"(?<![A-Za-z0-9])[A-Z]+[0-9]+(?![A-Za-z0-9])";
+        const string loopPinching=@"(?<loopPinching>滞回(?:曲线|环|回线)?(?:的)?捏拢|\b(?i:hysteresis(?:[- ]loop)? pinching|pinching of (?:the )?hysteresis loop)\b)";
         const string quantity=@"(?<temperatureChange>温度(?:的)?变化|\b(?i:temperature changes?|changes? in temperature)\b)|"+
             @"(?<temperatureDifference>温度(?:的)?差(?:值|异)?|温差|\b(?i:temperature differences?|differences? in temperature)\b)|"+
             @"(?<relativeDisplacement>相对位移|\b(?i:relative displacement)\b)|"+
             @"(?<absoluteDisplacement>绝对位移|\b(?i:absolute displacement)\b)|"+
-            @"(?<loopPinching>滞回(?:曲线|环|回线)?(?:的)?捏拢|\b(?i:hysteresis(?:[- ]loop)? pinching|pinching of (?:the )?hysteresis loop)\b)";
+            loopPinching;
         const string question=@"(?<abilityQuestion>能否|可否|是否(?:能够|可以|能))|(?<openQuestion>是否|\b(?i:whether(?: or not)?)\b)";
         const string purpose=@"为(?:了)?便于|以便(?:于)?|以方便|便于|旨在|目的是|为了";
         const string counted=@"(?<chineseCount>[零一二两三四五六七八九十百千万]+(?:项|组|种|次|类|处|份))";
@@ -142,8 +143,11 @@ internal static class Services {
                 throw new InvalidDataException("入口或出口的表述发生变化，请核对测点与结果的对应关系。");
             if(!ProtectedTokens(text,condition).SequenceEqual(ProtectedTokens(updated,condition)))
                 throw new InvalidDataException("接线方式或加载工况发生变化，请核对每个读数对应的工况。");
-            if(!ProtectedTokens(text,quantity).SequenceEqual(ProtectedTokens(updated,quantity)))
-                throw new InvalidDataException("修订改变了观测量或曲线特征的表述，请核对每个测点的物理含义。");
+            if(!ProtectedTokens(text,quantity).SequenceEqual(ProtectedTokens(updated,quantity))){
+                if(!ProtectedTokens(text,loopPinching).SequenceEqual(ProtectedTokens(updated,loopPinching)))
+                    throw new InvalidDataException("滞回曲线捏拢的表述发生变化，请核对曲线特征。");
+                throw new InvalidDataException("修订改变了温度变化、温差或位移参照方式的表述。请核对原文测量的是什么。");
+            }
             if(!ProtectedTokens(text,question).SequenceEqual(ProtectedTokens(updated,question)))
                 throw new InvalidDataException("研究问题中的疑问限定发生变化，请核对待检验的问题是否被写成了结论。");
             if(!ProtectedTokens(text,counted).SequenceEqual(ProtectedTokens(updated,counted)))

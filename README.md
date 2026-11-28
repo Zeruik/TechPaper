@@ -8,6 +8,10 @@
 
 [下载预览版](https://github.com/Zeruik/TechPaper/releases/tag/v0.9.0-preview.31) · [验证记录](docs/VALIDATION.md) · [研究与方法](docs/RESEARCH.md) · [使用条款](docs/TERMS.txt) · [MIT 许可](LICENSE)
 
+想先看改稿效果，可以打开同一份合成论文的两份 Word 文件。修订将“对三个序列的峰值进行了比较”简化为“比较了三个序列的峰值”。可逐项对照峰值、标题编号、页眉和引用角标。[原稿 DOCX](examples/modern-review/before.docx) · [修订稿 DOCX](examples/modern-review/after.docx)
+
+该样例一次修订后，GPTZero 4.1m 的 AI 分类置信度从 13% 升至 64%。目前没有验证任何提示词能稳定将全文评分降到 10 以下。希望复用编辑方法的作者，可复制通用提示词，在本机 Ollama 中逐段试用。[通用润色提示词与本机实测](docs/EDITORIAL-PROMPT.zh-CN.md) · [样例的完整前后测与格式检查](examples/modern-review/README.md)
+
 ![用合成材料演示逐段对照](assets/workspace.png)
 
 ## 安装和使用

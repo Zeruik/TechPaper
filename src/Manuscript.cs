@@ -286,8 +286,59 @@ internal sealed class Manuscript {
             Items.Add(item);
         }
     }
-    static bool PersonalPart(string name,bool comments) {
-        return (!name.StartsWith("word/",StringComparison.OrdinalIgnoreCase) || comments) && Regex.IsMatch(name,@"^(word/(comments[^/]*|people|person)\.xml|docProps/(custom\.xml|thumbnail\.[^/]+))$",RegexOptions.IgnoreCase);
+    Dictionary<string,string> propertyKinds;
+    Dictionary<string,string> PropertyKinds(){
+        if(propertyKinds!=null)return propertyKinds;
+        var result=new Dictionary<string,string>(StringComparer.OrdinalIgnoreCase);
+        foreach(string kind in new[]{"core","app","custom"}){
+            string path="docProps/"+kind+".xml";
+            if(parts.ContainsKey(path))result[path]=kind;
+        }
+        byte[] relationships;
+        if(parts.TryGetValue("_rels/.rels",out relationships)){
+            foreach(var rel in Parse(relationships).Root.Elements()){
+                if((string)rel.Attribute("TargetMode")=="External")continue;
+                string kind;
+                switch((string)rel.Attribute("Type")){
+                    case "http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties":kind="core";break;
+                    case "http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties":kind="app";break;
+                    case "http://schemas.openxmlformats.org/officeDocument/2006/relationships/custom-properties":kind="custom";break;
+                    default:continue;
+                }
+                string path=RelTarget("_rels/.rels",(string)rel.Attribute("Target"));
+                byte[] bytes;
+                if(result.ContainsKey(path) || !parts.TryGetValue(path,out bytes))continue;
+                var expected=kind=="core"?XName.Get("coreProperties","http://schemas.openxmlformats.org/package/2006/metadata/core-properties"):
+                    XName.Get("Properties","http://schemas.openxmlformats.org/officeDocument/2006/"+(kind=="app"?"extended":"custom")+"-properties");
+                if(Parse(bytes).Root.Name==expected)result[path]=kind;
+            }
+        }
+        return propertyKinds=result;
+    }
+    const string thumbnailRel="http://schemas.openxmlformats.org/package/2006/relationships/metadata/thumbnail";
+    HashSet<string> removableThumbnails;
+    int sharedThumbnails;
+    HashSet<string> RemovableThumbnails(){
+        if(removableThumbnails!=null)return removableThumbnails;
+        var thumbs=new HashSet<string>(parts.Keys.Where(k=>Regex.IsMatch(k,@"^docProps/thumbnail\.[^/]+$",RegexOptions.IgnoreCase)),StringComparer.OrdinalIgnoreCase);
+        var used=new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach(var part in parts.Where(p=>p.Key.EndsWith(".rels",StringComparison.OrdinalIgnoreCase))){
+            foreach(var rel in Parse(part.Value).Root.Elements()){
+                if((string)rel.Attribute("TargetMode")=="External")continue;
+                string path=RelTarget(part.Key,(string)rel.Attribute("Target"));
+                if(part.Key=="_rels/.rels" && (string)rel.Attribute("Type")==thumbnailRel){
+                    if(parts.ContainsKey(path))thumbs.Add(path);
+                }else used.Add(path);
+            }
+        }
+        sharedThumbnails=thumbs.Count(used.Contains);
+        thumbs.ExceptWith(used);
+        return removableThumbnails=thumbs;
+    }
+    bool PersonalPart(string name,bool comments) {
+        string kind;
+        if(PropertyKinds().TryGetValue(name,out kind) && kind=="custom")return true;
+        return RemovableThumbnails().Contains(name) || (comments && Regex.IsMatch(name,@"^word/(comments[^/]*|people|person)\.xml$",RegexOptions.IgnoreCase));
     }
     RunVisibility CleanupVisibility(){
         return new RunVisibility(parts.ContainsKey("word/styles.xml")?Parse(parts["word/styles.xml"]).Root:null);
@@ -312,9 +363,11 @@ internal sealed class Manuscript {
     static IEnumerable<XElement> ExtendedProperties(XDocument doc) {
         return doc.Root.Elements().Where(n=>new[]{"Company","Manager","Template","HyperlinkBase","TotalTime","TitlesOfParts","HeadingPairs"}.Contains(n.Name.LocalName));
     }
-    static string RelTarget(string relFile,string target) {
-        string owner=relFile=="_rels/.rels" ? "" : relFile.Replace("/_rels/","/").Substring(0,relFile.Replace("/_rels/","/").Length-5);
-        return Uri.UnescapeDataString(new Uri(new Uri("http://local/"+owner),target).AbsolutePath.TrimStart('/'));
+    string RelTarget(string relFile,string target) {
+        string source=relFile.StartsWith("_rels/",StringComparison.OrdinalIgnoreCase)?relFile.Substring(6):relFile.Replace("/_rels/","/");
+        string owner=relFile=="_rels/.rels" ? "" : source.Substring(0,source.Length-5);
+        string escaped=new Uri(new Uri("http://local/"+owner),target).AbsolutePath.TrimStart('/');
+        return parts.ContainsKey(escaped)?escaped:Uri.UnescapeDataString(escaped);
     }
     string privacyDetails;
     static readonly Regex identityField=new Regex(
@@ -341,11 +394,10 @@ internal sealed class Manuscript {
         return count;
     }
     string GetPrivacyDetails() {
-        string[] props={"docProps/core.xml","docProps/app.xml","docProps/custom.xml"};
         var rows=new List<string>();
-        foreach(string key in props) if(parts.ContainsKey(key)){
+        foreach(string key in PropertyKinds().Keys){
             var properties=Parse(parts[key]);
-            var nodes=key=="docProps/app.xml"?ExtendedProperties(properties):properties.Root.Elements();
+            var nodes=PropertyKinds()[key]=="app"?ExtendedProperties(properties):properties.Root.Elements();
             var names=nodes.Select(n=>(string)n.Attribute("name")??n.Name.LocalName).ToArray();
             if(names.Length>0)rows.Add(key+" · "+String.Join(", ",names));
         }
@@ -358,7 +410,8 @@ internal sealed class Manuscript {
             int count=CountIdentityFields(xml);
             if(count>0)retained.Add(part.Key+" · "+count);
         }
-        rows.Add("将移除的隐藏纯文本片段："+hidden+"；缩略图："+parts.Keys.Count(k=>k.StartsWith("docProps/thumbnail.")));
+        rows.Add("将移除的隐藏纯文本片段："+hidden+"；缩略图："+RemovableThumbnails().Count);
+        if(sharedThumbnails>0)rows.Add("保留其他位置引用的图片："+sharedThumbnails+"；解除封面缩略图关联。");
         rows.Add("保留域中的缓存文字、含图片等对象的片段，以及修订记录中的隐藏文字。");
         if(retained.Count>0){
             rows.Add("以下位置含姓名、文件名或文档属性域。清理会保留域结构，已显示的姓名或路径可能仍在副本中，请在分享前核对：");
@@ -368,7 +421,7 @@ internal sealed class Manuscript {
     }
     internal string PrivacyPreview(bool comments=false) {
         if(privacyDetails==null)privacyDetails=GetPrivacyDetails();
-        int reviewParts=parts.Keys.Count(k=>k.StartsWith("word/") && PersonalPart(k,true));
+        int reviewParts=parts.Keys.Count(k=>PersonalPart(k,true) && !PersonalPart(k,false));
         return privacyDetails+"\r\n"+(comments ? "将删除批注及人员部件："+reviewParts+"；移除批注标记并匿名化审阅者信息，保留修订正文。" :
             "保留批注及人员部件："+reviewParts+"。保留修订记录及其中的隐藏文字。");
     }
@@ -396,13 +449,17 @@ internal sealed class Manuscript {
                 if(clean && (PersonalPart(name,comments) || comments && Regex.IsMatch(name,@"^word/_rels/(comments[^/]*|people|person)\.xml\.rels$",RegexOptions.IgnoreCase))) continue;
                 XDocument x=name=="word/document.xml" && edits.Count>0 ? clone : null;
                 bool changed=x!=null;
-                if(clean && (name.EndsWith(".xml",StringComparison.OrdinalIgnoreCase) || name.EndsWith(".rels"))) {
+                string kind=null;
+                if(clean && (PropertyKinds().TryGetValue(name,out kind) || name.EndsWith(".xml",StringComparison.OrdinalIgnoreCase) || name.EndsWith(".rels"))) {
                     if(x==null)x=name=="word/document.xml"?clone:Parse(entry.Value);
                     IEnumerable<XElement> remove=Enumerable.Empty<XElement>();
-                    if(name=="docProps/core.xml") remove=x.Root.Elements();
-                    else if(name=="docProps/app.xml") remove=ExtendedProperties(x);
-                    else if(name=="[Content_Types].xml") remove=x.Root.Elements().Where(n=>PersonalPart(((string)n.Attribute("PartName")??"").TrimStart('/'),comments));
-                    else if(name.EndsWith(".rels")) remove=x.Root.Elements().Where(n=>(string)n.Attribute("TargetMode")!="External" && PersonalPart(RelTarget(name,(string)n.Attribute("Target")),comments));
+                    if(kind=="core") remove=x.Root.Elements();
+                    else if(kind=="app") remove=ExtendedProperties(x);
+                    else if(name=="[Content_Types].xml") remove=x.Root.Elements().Where(n=>
+                        n.Attribute("PartName")!=null && PersonalPart(RelTarget("_rels/.rels",(string)n.Attribute("PartName")),comments));
+                    else if(name.EndsWith(".rels")) remove=x.Root.Elements().Where(n=>
+                        (name=="_rels/.rels" && (string)n.Attribute("Type")==thumbnailRel) ||
+                        ((string)n.Attribute("TargetMode")!="External" && PersonalPart(RelTarget(name,(string)n.Attribute("Target")),comments)));
                     else if(name.StartsWith("word/") && !PersonalPart(name,true)){
                         remove=RemovableHiddenRuns(x,visibility);
                         if(comments)remove=remove.Concat(x.Descendants().Where(n=>n.Name==W+"commentRangeStart" || n.Name==W+"commentRangeEnd" || n.Name==W+"commentReference"));

@@ -54,7 +54,7 @@ class Regression {
                 "clean copy excludes hidden plain text and retains both fields and visible overrides");
         }finally{File.Delete(input);File.Delete(output);}
     }
-    static void CheckPrivacy(string source, Type manuscriptType) {
+    static void CheckPrivacy(string source, Type manuscriptType,bool relocate=false,bool escapedEntries=false) {
         var w=Manuscript.W;
         string folder=Path.Combine("build","privacy-"+Guid.NewGuid());
         Directory.CreateDirectory(folder);
@@ -90,6 +90,25 @@ class Regression {
         parts["[Content_Types].xml"]=utf8.GetBytes(types.ToString());
         parts["_rels/.rels"]=utf8.GetBytes(rels.ToString());
         parts["docProps/custom.xml"]=utf8.GetBytes("<Properties xmlns='http://schemas.openxmlformats.org/officeDocument/2006/custom-properties'><property name='FixtureOwner' pid='2' fmtid='{D5CDD505-2E9C-101B-9397-08002B2CF9AE}'><s:lpwstr xmlns:s='http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes'>Synthetic editor</s:lpwstr></property></Properties>");
+        string prefix="metadata/属性 副本-", referencePrefix="metadata/"+Uri.EscapeDataString("属性 副本-");
+        string entryPrefix=escapedEntries?referencePrefix:prefix;
+        string picture="docProps/样件 图.png", pictureRef="docProps/"+Uri.EscapeDataString("样件 图.png");
+        string pictureEntry=escapedEntries?pictureRef:picture;
+        if(relocate){
+            // The cover preview and the drawing in the body share one image part.
+            parts.Remove("docProps/thumbnail.jpeg");
+            parts[pictureEntry]=parts["word/media/image1.png"];
+            parts.Remove("word/media/image1.png");
+            parts["_rels/.rels"]=utf8.GetBytes(utf8.GetString(parts["_rels/.rels"]).Replace("docProps/thumbnail.jpeg",pictureRef));
+            parts["word/_rels/document.xml.rels"]=utf8.GetBytes(utf8.GetString(parts["word/_rels/document.xml.rels"])
+                .Replace("media/image1.png","../"+pictureRef));
+            foreach(string kind in new[]{"core","app","custom"}){
+                string old="docProps/"+kind+".xml", moved=entryPrefix+kind+".part";
+                parts[moved]=parts[old];parts.Remove(old);
+                foreach(string part in new[]{"_rels/.rels","[Content_Types].xml"})
+                    parts[part]=utf8.GetBytes(utf8.GetString(parts[part]).Replace(old,referencePrefix+kind+".part"));
+            }
+        }
         try {
             using(var z=ZipFile.Open(input,ZipArchiveMode.Create))
                 foreach(var part in parts) using(var stream=z.CreateEntry(part.Key).Open())stream.Write(part.Value,0,part.Value.Length);
@@ -106,6 +125,26 @@ class Regression {
                 string output=Path.Combine(folder,extra?"extra.docx":"default.docx");
                 manuscriptType.GetMethod("Export",flags).Invoke(doc,new object[]{output,new HashSet<int>(),true,extra});
                 var result=Read(output);
+                Check(!utf8.GetString(result["_rels/.rels"]).Contains("/metadata/thumbnail"),"cover preview link removed");
+                if(relocate){
+                    Check(preview.Contains("保留其他位置引用的图片：1") &&
+                        result[pictureEntry].SequenceEqual(parts[pictureEntry]) &&
+                        XNode.DeepEquals(Manuscript.Parse(result["word/_rels/document.xml.rels"]).Root.Elements().Single(n=>(string)n.Attribute("Id")=="rId12"),
+                            Manuscript.Parse(parts["word/_rels/document.xml.rels"]).Root.Elements().Single(n=>(string)n.Attribute("Id")=="rId12")),
+                        "shared thumbnail remains byte-identical and the drawing relationship survives");
+                }else{
+                    Check(preview.Contains("缩略图：1") && !result.ContainsKey("docProps/thumbnail.jpeg"),
+                        "standalone cover preview removed");
+                }
+                if(relocate){
+                    Check(preview.Contains(entryPrefix+"core.part") &&
+                        !Manuscript.Parse(result[entryPrefix+"core.part"]).Root.Elements().Any() &&
+                        !Manuscript.Parse(result[entryPrefix+"app.part"]).Root.Elements().Any(n=>n.Name.LocalName=="Company") &&
+                        !result.ContainsKey(entryPrefix+"custom.part") &&
+                        !utf8.GetString(result["_rels/.rels"]).Contains(referencePrefix+"custom.part") &&
+                        !utf8.GetString(result["[Content_Types].xml"]).Contains(referencePrefix+"custom.part"),
+                        "relocated metadata preview, removal and references agree");
+                }
                 Check(result["word/header1.xml"].SequenceEqual(parts["word/header1.xml"]) &&
                     result["word/footer1.xml"].SequenceEqual(parts["word/footer1.xml"]),
                     "identity field codes, cached results and unrelated page number preserved");
@@ -191,6 +230,8 @@ class Regression {
         string source="tests/sample.docx", path=Path.Combine("build",Guid.NewGuid()+".docx");
         var original=File.ReadAllBytes(source);var a=Read(source);var doc=new Manuscript(source);var w=Manuscript.W;
         CheckPrivacy(source,typeof(Manuscript));
+        CheckPrivacy(source,typeof(Manuscript),true);
+        CheckPrivacy(source,typeof(Manuscript),true,true);
         CheckVisibleReviewText(source);
         var shortDoc=Manuscript.FromPastedText("只有末次读数超过 7。\n结果\n[3]\n7.\nIt rose.");
         var shortResult=shortDoc.Items[0];
